@@ -4,6 +4,8 @@ Assumes ingestion (parsing/chunking/embedding/storage) was already done separate
 this module only handles live query-time retrieval, reranking, and generation.
 """
 
+import json
+import re
 import time
 import requests
 import weaviate
@@ -16,7 +18,7 @@ WEAVIATE_PORT = 8080
 WEAVIATE_GRPC_PORT = 50051
 COLLECTION_NAME = "CISControlsV8"
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
+OLLAMA_CHAT_URL = "http://localhost:11434/api/chat"
 OLLAMA_MODEL = "llama3.2:3b"
 
 # These are loaded once at startup, not per-request (loading them per-request
@@ -102,25 +104,70 @@ def _retrieve_and_rerank(question: str, k_vector: int = 12, k_final: int = 3):
     return [document for document, score in ranked_results[:k_final]]
 
 
-def _build_prompt(context: str, question: str) -> str:
-    return f"""Answer the question using only the provided context.
-If the answer is not available, say that you do not know.
+_HISTORY_TURN_CHAR_LIMIT = 800
 
-Context:
-{context}
+_SYSTEM_PROMPT = (
+    "You are a helpful assistant answering questions about the CIS Controls v8 document, "
+    "in an ongoing conversation. When the current question includes a Context section, use "
+    "it to answer questions about the document's content. When there is no Context section, "
+    "answer using the conversation history above instead — for example if the user asks you "
+    "to summarize, recap, or repeat something already discussed. If you don't have enough "
+    "information either way, say that you do not know."
+)
 
-Question:
-{question}
+# Phrases that mean "answer from what we already discussed," not "look up the document."
+# An LLM-based classifier for this was tried first and rejected: on llama3.2:3b it was
+# systematically biased toward "HISTORY" even for unambiguous fresh document questions
+# (e.g. "What is Safeguard 6.1?"), which would have silently broken real Q&A mid-conversation.
+# A keyword match is a strictly safer default: it only ever skips retrieval on an explicit
+# match, so it can miss creative phrasings but can't misfire on a genuine document question.
+_HISTORY_ONLY_PATTERN = re.compile(
+    r"\bsummar(y|ize|ise|izing|ising)\b"
+    r"|\brecap\b"
+    r"|\brepeat\b"
+    r"|\bsay that again\b"
+    r"|\bwhat did (you|we) (just )?(say|discuss|talk about)\b"
+    r"|\bwhat have we discussed\b"
+    r"|\bwhat was your (last|previous) answer\b"
+    r"|\bgo over that again\b"
+    r"|\bremind me what\b",
+    re.IGNORECASE,
+)
 
-Answer:
-"""
+
+def _needs_document_retrieval(question: str, history: list[dict] | None) -> bool:
+    """Does this question need fresh document retrieval, or can it be answered purely from
+    conversation history (e.g. "summarize what we discussed")? Defaults to True (retrieve)
+    whenever there's no history yet or the question doesn't match a known conversation-
+    referencing phrase — retrieval is always the safe default."""
+    if not history:
+        return True
+    return not _HISTORY_ONLY_PATTERN.search(question)
 
 
-def _generate_with_ollama(prompt_text: str, model: str = OLLAMA_MODEL) -> str:
+def _build_messages(context: str, question: str, history: list[dict] | None = None) -> list[dict]:
+    """Builds an Ollama /api/chat messages array: a system prompt, the real conversation
+    history as actual chat turns (not a flattened text block — models trained on multi-turn
+    chat are far more reliable at referencing genuine prior turns than a summarized-in-prose
+    version of them), then the current question — with its retrieved Context, if any."""
+    messages = [{"role": "system", "content": _SYSTEM_PROMPT}]
+
+    for turn in history or []:
+        content = turn["content"]
+        if len(content) > _HISTORY_TURN_CHAR_LIMIT:
+            content = content[:_HISTORY_TURN_CHAR_LIMIT] + "..."
+        messages.append({"role": turn["role"], "content": content})
+
+    user_content = f"Context:\n{context}\n\nQuestion:\n{question}" if context else question
+    messages.append({"role": "user", "content": user_content})
+    return messages
+
+
+def _generate_with_ollama(messages: list[dict], model: str = OLLAMA_MODEL) -> str:
     try:
         response = requests.post(
-            OLLAMA_URL,
-            json={"model": model, "prompt": prompt_text, "stream": False},
+            OLLAMA_CHAT_URL,
+            json={"model": model, "messages": messages, "stream": False},
             timeout=120,
         )
         response.raise_for_status()
@@ -129,20 +176,11 @@ def _generate_with_ollama(prompt_text: str, model: str = OLLAMA_MODEL) -> str:
             "Could not reach Ollama. Make sure 'ollama serve' is running "
             f"and the model has been pulled (e.g. 'ollama pull {model}')."
         ) from error
-    return response.json()["response"]
+    return response.json()["message"]["content"]
 
 
-def answer_question(question: str) -> dict:
-    """Main entry point: takes a user question, returns an answer + sources."""
-    start = time.perf_counter()
-
-    documents = _retrieve_and_rerank(question)
-
-    context = "\n\n".join(document.page_content for document in documents)
-    prompt = _build_prompt(context, question)
-    answer_text = _generate_with_ollama(prompt)
-
-    sources = [
+def _documents_to_sources(documents) -> list[dict]:
+    return [
         {
             "source": document.metadata.get("source"),
             "chunk_id": int(document.metadata["chunk_id"]),
@@ -150,10 +188,80 @@ def answer_question(question: str) -> dict:
         for document in documents
     ]
 
+
+def answer_question(question: str, history: list[dict] | None = None) -> dict:
+    """Main entry point: takes a user question, returns an answer + sources.
+
+    `history` is recent prior turns ({"role", "content"}, oldest first) so the
+    model can handle follow-ups like "repeat that" that don't need fresh retrieval.
+    """
+    start = time.perf_counter()
+
+    if _needs_document_retrieval(question, history):
+        documents = _retrieve_and_rerank(question)
+        context = "\n\n".join(document.page_content for document in documents)
+    else:
+        documents = []
+        context = ""
+
+    messages = _build_messages(context, question, history)
+    answer_text = _generate_with_ollama(messages)
+
     latency = round(time.perf_counter() - start, 3)
 
     return {
         "answer": answer_text,
-        "sources": sources,
+        "sources": _documents_to_sources(documents),
         "latency_seconds": latency,
     }
+
+
+def stream_answer(question: str, history: list[dict] | None = None):
+    """Generator version of answer_question for SSE streaming.
+
+    `history` is recent prior turns ({"role", "content"}, oldest first) so the
+    model can handle follow-ups like "repeat that" that don't need fresh retrieval.
+
+    Yields, in order:
+      ("sources", list[dict])       -- once, after retrieval/reranking
+      ("token", str)                -- repeatedly, as Ollama streams tokens
+      ("done", str)                 -- once, with the full concatenated answer
+    """
+    if _needs_document_retrieval(question, history):
+        documents = _retrieve_and_rerank(question)
+        context = "\n\n".join(document.page_content for document in documents)
+    else:
+        documents = []
+        context = ""
+
+    yield ("sources", _documents_to_sources(documents))
+
+    messages = _build_messages(context, question, history)
+
+    try:
+        response = requests.post(
+            OLLAMA_CHAT_URL,
+            json={"model": OLLAMA_MODEL, "messages": messages, "stream": True},
+            timeout=120,
+            stream=True,
+        )
+        response.raise_for_status()
+    except requests.exceptions.ConnectionError as error:
+        raise RuntimeError(
+            "Could not reach Ollama. Make sure 'ollama serve' is running "
+            f"and the model has been pulled (e.g. 'ollama pull {OLLAMA_MODEL}')."
+        ) from error
+
+    full_answer = ""
+    for line in response.iter_lines():
+        if not line:
+            continue
+        chunk = json.loads(line)
+        token = chunk.get("message", {}).get("content", "")
+        if token:
+            full_answer += token
+            yield ("token", token)
+        if chunk.get("done"):
+            break
+
+    yield ("done", full_answer)
