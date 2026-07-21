@@ -9,6 +9,7 @@ import re
 import time
 import requests
 import weaviate
+from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_weaviate import WeaviateVectorStore
 from sentence_transformers import CrossEncoder
@@ -20,6 +21,13 @@ COLLECTION_NAME = "CISControlsV8"
 
 OLLAMA_CHAT_URL = "http://localhost:11434/api/chat"
 OLLAMA_MODEL = "llama3.2:3b"
+# Ollama's own default num_ctx is conservative and isn't raised just because the
+# model supports a larger one — "list all 18 controls"-style questions can push
+# input alone past 3500 tokens, so an explicit, generous window is needed to avoid
+# silent truncation/context-shifting slowdowns. Timeout is raised to match: that
+# much context measurably increases generation time on CPU.
+OLLAMA_NUM_CTX = 8192
+OLLAMA_TIMEOUT_SECONDS = 300
 
 # These are loaded once at startup, not per-request (loading them per-request
 # would be extremely slow — the embedding model and reranker take real time to load).
@@ -79,12 +87,135 @@ def shutdown_pipeline():
         _weaviate_client.close()
 
 
+# Matches "Control N" / "Safeguard N.M" mentions so numbered lookups can bypass
+# semantic ranking (see _keyword_match_documents below for why).
+_CONTROL_NUMBER_PATTERN = re.compile(r"\bcontrol\s+0?(\d{1,2})\b", re.IGNORECASE)
+_SAFEGUARD_NUMBER_PATTERN = re.compile(r"\bsafeguard\s+(\d{1,2})\.(\d{1,2})\b", re.IGNORECASE)
+_LIST_ALL_CONTROLS_PATTERN = re.compile(
+    r"\ball\b(?:\s+\w+){0,3}\s+controls\b"
+    r"|\bevery\s+control\b"
+    r"|\b(full|complete)\s+list\b(?:\s+\w+){0,3}\s+controls\b"
+    r"|\blist\b(?:\s+\w+){0,4}\s+controls\b",
+    re.IGNORECASE,
+)
+_KEYWORD_SCAN_LIMIT = 500  # collection has ~307 chunks; scanning all of them is cheap
+_TOTAL_CONTROLS = 18
+
+
+def _weaviate_object_to_document(obj) -> Document:
+    return Document(
+        page_content=obj.properties.get("text", ""),
+        metadata={"source": obj.properties.get("source"), "chunk_id": obj.properties.get("chunk_id")},
+    )
+
+
+def _control_overview_pattern(number: str) -> re.Pattern:
+    # Each control's overview chunk has its number, then (garbled/rotated "CONTROL"
+    # text and) the title, then "SAFEGUARDS TOTAL" within a short span — this is the
+    # most reliable literal marker found during testing.
+    return re.compile(rf"\b0?{re.escape(number)}\b[\s\S]{{0,150}}?SAFEGUARDS\s+TOTAL")
+
+
+def _keyword_match_documents(question: str, limit: int) -> list[Document]:
+    """For questions naming a specific control/safeguard number (e.g. "Control 1",
+    "Safeguard 4.1"), scans every chunk in the collection for a literal text marker
+    identifying that exact section, bypassing embedding/rerank scoring entirely.
+
+    Why: testing showed both the embedding model and the cross-encoder reranker are
+    unreliable at distinguishing "Control 1" from "Control 14" etc. — the boilerplate
+    text surrounding each control ("Why is this Control critical?", "SAFEGUARDS
+    TOTAL"...) is nearly identical across all of them, so the correct chunk often
+    doesn't even make the semantic top-k, and scores poorly with the reranker even
+    when it does. A literal number match is a much stronger signal for this specific
+    query shape than semantic similarity. The collection is small enough (~300
+    chunks) that a full client-side scan on every request is cheap.
+    """
+    safeguard_match = _SAFEGUARD_NUMBER_PATTERN.search(question)
+    control_match = _CONTROL_NUMBER_PATTERN.search(question)
+    if not safeguard_match and not control_match:
+        return []
+
+    collection = _weaviate_client.collections.get(COLLECTION_NAME)
+    all_objects = collection.query.fetch_objects(limit=_KEYWORD_SCAN_LIMIT).objects
+
+    if safeguard_match:
+        major, minor = safeguard_match.group(1), safeguard_match.group(2)
+        # Safeguards are formatted as "4.1 Establish and Maintain..." at the start
+        # of their own dedicated chunk text.
+        pattern = re.compile(rf"\b{re.escape(major)}\.{re.escape(minor)}\s+[A-Z]")
+    else:
+        pattern = _control_overview_pattern(control_match.group(1))
+
+    matches = [obj for obj in all_objects if pattern.search(obj.properties.get("text", ""))]
+    return [_weaviate_object_to_document(obj) for obj in matches[:limit]]
+
+
+def _assign_control_chunks(candidates_by_number: dict) -> dict:
+    """Bipartite matching (Kuhn's algorithm): assigns each control number a distinct
+    chunk_id from its own candidate list, maximizing how many controls get a match.
+    Needed because adjacent controls' running page headers mean the same handful of
+    chunks are candidates for multiple control numbers — a naive "first available"
+    assignment can strand a later control with zero options even though a valid
+    full assignment exists, since an earlier control could have taken a different
+    one of its own candidates instead."""
+    chunk_to_number: dict = {}
+
+    def try_assign(number, visited: set) -> bool:
+        for chunk_id in candidates_by_number.get(number, []):
+            if chunk_id in visited:
+                continue
+            visited.add(chunk_id)
+            if chunk_id not in chunk_to_number or try_assign(chunk_to_number[chunk_id], visited):
+                chunk_to_number[chunk_id] = number
+                return True
+        return False
+
+    for number in candidates_by_number:
+        try_assign(number, set())
+
+    return {number: chunk_id for chunk_id, number in chunk_to_number.items()}
+
+
+def _all_control_overview_documents() -> list[Document]:
+    """Fetches all 18 controls' overview chunks directly by number, for questions
+    that need to enumerate the whole document (e.g. "list all 18 CIS Controls").
+    Normal k_final=3 semantic retrieval can't cover this, and testing showed the
+    model would rather hallucinate plausible-sounding fake control names than admit
+    it can't see the full list — this gives it the real thing to enumerate from."""
+    collection = _weaviate_client.collections.get(COLLECTION_NAME)
+    all_objects = collection.query.fetch_objects(limit=_KEYWORD_SCAN_LIMIT).objects
+    objects_by_chunk_id = {int(obj.properties["chunk_id"]): obj for obj in all_objects}
+
+    candidates_by_number = {}
+    for number in range(1, _TOTAL_CONTROLS + 1):
+        pattern = _control_overview_pattern(str(number))
+        candidates_by_number[number] = [
+            chunk_id
+            for chunk_id, obj in objects_by_chunk_id.items()
+            if pattern.search(obj.properties.get("text", ""))
+        ]
+
+    assignment = _assign_control_chunks(candidates_by_number)
+    return [
+        _weaviate_object_to_document(objects_by_chunk_id[assignment[number]])
+        for number in sorted(assignment)
+    ]
+
+
 def _retrieve_and_rerank(question: str, k_vector: int = 12, k_final: int = 3):
+    if _LIST_ALL_CONTROLS_PATTERN.search(question):
+        overview_documents = _all_control_overview_documents()
+        if overview_documents:
+            return overview_documents
+
+    keyword_documents = _keyword_match_documents(question, limit=k_final)
+
     results = _vector_store.similarity_search(query=question, k=k_vector)
 
-    # Deduplicate by chunk_id (same logic as the notebook)
+    # Deduplicate by chunk_id (same logic as the notebook), also excluding anything
+    # the keyword match already found so it isn't double-counted.
     unique_results = []
-    seen_chunk_ids = set()
+    seen_chunk_ids = {int(document.metadata["chunk_id"]) for document in keyword_documents}
     for document in results:
         current_id = int(document.metadata["chunk_id"])
         if current_id not in seen_chunk_ids:
@@ -92,16 +223,15 @@ def _retrieve_and_rerank(question: str, k_vector: int = 12, k_final: int = 3):
             unique_results.append(document)
     results = unique_results
 
-    pairs = [[question, document.page_content] for document in results]
-    scores = _reranker.predict(pairs, batch_size=8, show_progress_bar=False)
+    remaining_slots = max(k_final - len(keyword_documents), 0)
+    reranked_fill = []
+    if remaining_slots and results:
+        pairs = [[question, document.page_content] for document in results]
+        scores = _reranker.predict(pairs, batch_size=8, show_progress_bar=False)
+        ranked_results = sorted(zip(results, scores), key=lambda item: float(item[1]), reverse=True)
+        reranked_fill = [document for document, score in ranked_results[:remaining_slots]]
 
-    ranked_results = sorted(
-        zip(results, scores),
-        key=lambda item: float(item[1]),
-        reverse=True,
-    )
-
-    return [document for document, score in ranked_results[:k_final]]
+    return keyword_documents + reranked_fill
 
 
 _HISTORY_TURN_CHAR_LIMIT = 800
@@ -180,19 +310,34 @@ def _build_messages(context: str, question: str, history: list[dict] | None = No
     return messages
 
 
+def _raise_ollama_error(error: requests.exceptions.RequestException, model: str):
+    if isinstance(error, requests.exceptions.Timeout):
+        raise RuntimeError(
+            "Ollama took too long to respond. This can happen on questions that "
+            "need a lot of context (e.g. asking to list everything) on slower "
+            "hardware — try again, or ask a more specific question."
+        ) from error
+    raise RuntimeError(
+        "Could not reach Ollama. Make sure 'ollama serve' is running "
+        f"and the model has been pulled (e.g. 'ollama pull {model}')."
+    ) from error
+
+
 def _generate_with_ollama(messages: list[dict], model: str = OLLAMA_MODEL) -> str:
     try:
         response = requests.post(
             OLLAMA_CHAT_URL,
-            json={"model": model, "messages": messages, "stream": False},
-            timeout=120,
+            json={
+                "model": model,
+                "messages": messages,
+                "stream": False,
+                "options": {"num_ctx": OLLAMA_NUM_CTX},
+            },
+            timeout=OLLAMA_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
-    except requests.exceptions.ConnectionError as error:
-        raise RuntimeError(
-            "Could not reach Ollama. Make sure 'ollama serve' is running "
-            f"and the model has been pulled (e.g. 'ollama pull {model}')."
-        ) from error
+    except requests.exceptions.RequestException as error:
+        _raise_ollama_error(error, model)
     return response.json()["message"]["content"]
 
 
@@ -258,16 +403,18 @@ def stream_answer(question: str, history: list[dict] | None = None):
     try:
         response = requests.post(
             OLLAMA_CHAT_URL,
-            json={"model": OLLAMA_MODEL, "messages": messages, "stream": True},
-            timeout=120,
+            json={
+                "model": OLLAMA_MODEL,
+                "messages": messages,
+                "stream": True,
+                "options": {"num_ctx": OLLAMA_NUM_CTX},
+            },
+            timeout=OLLAMA_TIMEOUT_SECONDS,
             stream=True,
         )
         response.raise_for_status()
-    except requests.exceptions.ConnectionError as error:
-        raise RuntimeError(
-            "Could not reach Ollama. Make sure 'ollama serve' is running "
-            f"and the model has been pulled (e.g. 'ollama pull {OLLAMA_MODEL}')."
-        ) from error
+    except requests.exceptions.RequestException as error:
+        _raise_ollama_error(error, OLLAMA_MODEL)
 
     full_answer = ""
     for line in response.iter_lines():
