@@ -107,12 +107,15 @@ def _retrieve_and_rerank(question: str, k_vector: int = 12, k_final: int = 3):
 _HISTORY_TURN_CHAR_LIMIT = 800
 
 _SYSTEM_PROMPT = (
-    "You are a helpful assistant answering questions about the CIS Controls v8 document, "
-    "in an ongoing conversation. When the current question includes a Context section, use "
-    "it to answer questions about the document's content. When there is no Context section, "
-    "answer using the conversation history above instead — for example if the user asks you "
-    "to summarize, recap, or repeat something already discussed. If you don't have enough "
-    "information either way, say that you do not know."
+    "You are a friendly assistant that helps users learn about the CIS Controls v8 "
+    "document, in an ongoing conversation. When the current question includes a Context "
+    "section, use it to answer questions about the document's content. When there is no "
+    "Context section, it means no document lookup was needed for this question — this "
+    "happens for two kinds of messages: casual greetings or small talk (respond naturally "
+    "and briefly, and mention you're happy to help with CIS Controls v8 questions), or "
+    "requests to summarize, recap, or repeat something already discussed (answer using the "
+    "conversation history above). If you don't have enough information to answer, say that "
+    "you do not know."
 )
 
 # Phrases that mean "answer from what we already discussed," not "look up the document."
@@ -134,15 +137,29 @@ _HISTORY_ONLY_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# Standalone greetings/small talk — matched against the *whole* message (not a substring
+# search like the pattern above) so it doesn't misfire on real questions that happen to
+# contain "hi" or "thanks" somewhere in them.
+_SMALL_TALK_PATTERN = re.compile(
+    r"^(hi|hello|hey|hiya|yo|sup|good (morning|afternoon|evening)|"
+    r"how('s| is) it going|how are you|"
+    r"thanks|thank you|thx|ty|"
+    r"ok|okay|cool|great|nice( one)?|sounds good|"
+    r"bye|goodbye|see (ya|you)|later)[\s!.,?]*$",
+    re.IGNORECASE,
+)
+
 
 def _needs_document_retrieval(question: str, history: list[dict] | None) -> bool:
-    """Does this question need fresh document retrieval, or can it be answered purely from
-    conversation history (e.g. "summarize what we discussed")? Defaults to True (retrieve)
-    whenever there's no history yet or the question doesn't match a known conversation-
-    referencing phrase — retrieval is always the safe default."""
+    """Does this question need fresh document retrieval, or can it be answered without one
+    (small talk, or "summarize what we discussed")? Defaults to True (retrieve) whenever the
+    question doesn't match a known non-document pattern — retrieval is always the safe default."""
+    stripped = question.strip()
+    if _SMALL_TALK_PATTERN.match(stripped):
+        return False
     if not history:
         return True
-    return not _HISTORY_ONLY_PATTERN.search(question)
+    return not _HISTORY_ONLY_PATTERN.search(stripped)
 
 
 def _build_messages(context: str, question: str, history: list[dict] | None = None) -> list[dict]:
