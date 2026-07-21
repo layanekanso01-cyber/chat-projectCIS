@@ -2,13 +2,13 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
-export function ChatInput({ onSend }) {
+export function ChatInput({ onSend, disabled = false }) {
   const [value, setValue] = useState("");
 
   function handleSubmit(event) {
     event.preventDefault();
     const trimmed = value.trim();
-    if (!trimmed) return;
+    if (!trimmed || disabled) return;
     onSend(trimmed);
     setValue("");
   }
@@ -23,8 +23,11 @@ export function ChatInput({ onSend }) {
         onChange={(event) => setValue(event.target.value)}
         placeholder="Type your question..."
         className="flex-1"
+        disabled={disabled}
       />
-      <Button type="submit">Send</Button>
+      <Button type="submit" disabled={disabled}>
+        Send
+      </Button>
     </form>
   );
 }
