@@ -36,11 +36,15 @@ chat-project/
 
 backend/
 
-main.py # FastAPI app: CORS, /health, /chat routes
+main.py # FastAPI app: CORS, /health, /chat, /chat/stream, /conversations routes
 
 rag/
 
 pipeline.py # RAG query logic: retrieve, rerank, generate
+
+db/
+
+mongo.py # MongoDB conversation persistence (Motor)
 
 venv/ # Python virtual environment (not committed)
 
@@ -50,15 +54,15 @@ src/
 
 components/
 
-chat/ # ChatHeader, ChatViewport, ChatInput, MessageBubble
+chat/ # ChatHeader, ChatViewport, ChatInput, MessageBubble, ConversationSidebar
 
-citations/ # (planned) source citation display
+citations/ # SourceCitations (hover tooltips)
 
-feedback/ # (planned) thumbs up/down UI
+feedback/ # FeedbackButtons, FeedbackDialog (thumbs up/down)
 
-ui/ # shadcn-generated components (button, input, etc.)
+ui/ # shadcn-generated components (button, input, tooltip, dialog, textarea, etc.)
 
-hooks/ # (planned) custom React hooks
+hooks/ # useChatStream (SSE consumption)
 
 lib/ # shadcn utils
 
@@ -150,15 +154,15 @@ Runs on `http://localhost:5173`.
 
 \- \[x] Static chat shell UI (header, viewport, input) connected to backend
 
-\- \[ ] SSE streaming (planned next)
+\- \[x] SSE streaming (`/chat/stream`, `useChatStream` hook)
 
-\- \[ ] Source citations with hover tooltips
+\- \[x] Source citations with hover tooltips
 
-\- \[ ] Chat history persistence (MongoDB)
+\- \[x] Chat history persistence (MongoDB)
 
-\- \[ ] Thumbs up/down feedback
+\- \[x] Thumbs up/down feedback
 
-\- \[ ] Response regeneration
+\- \[x] Response regeneration (with version switching)
 
 \- \[ ] Visual/UI polish pass
 
