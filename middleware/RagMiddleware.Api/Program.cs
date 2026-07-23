@@ -12,6 +12,7 @@ using Polly.Extensions.Http;
 using RagMiddleware.Api.Middleware;
 using RagMiddleware.Infrastructure.Audit;
 using RagMiddleware.Infrastructure.Auth;
+using RagMiddleware.Infrastructure.Insights;
 using RagMiddleware.Infrastructure.Mongo;
 using RagMiddleware.Infrastructure.RagApi;
 using RagMiddleware.Infrastructure.Users;
@@ -73,6 +74,7 @@ builder.Services.AddSingleton<MongoDbContext>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 builder.Services.AddScoped<IAuditLogRepository, AuditLogRepository>();
+builder.Services.AddScoped<IInsightsRepository, InsightsRepository>();
 
 // --- JWT issuance (our own session tokens, handed to the UI after Google sign-in) ---
 builder.Services

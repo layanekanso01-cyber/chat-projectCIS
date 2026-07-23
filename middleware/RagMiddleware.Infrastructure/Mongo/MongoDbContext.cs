@@ -13,9 +13,14 @@ public class MongoDbContext
 {
     public IMongoDatabase Database { get; }
 
+    /// <summary>Read-only access to the Python RAG API's own database — same MongoDB
+    /// instance, one connection reused, but a database this app never writes to.</summary>
+    public IMongoDatabase RagAppDatabase { get; }
+
     public MongoDbContext(IOptions<MongoDbOptions> options)
     {
         var client = new MongoClient(options.Value.ConnectionString);
         Database = client.GetDatabase(options.Value.DatabaseName);
+        RagAppDatabase = client.GetDatabase(options.Value.RagAppDatabaseName);
     }
 }

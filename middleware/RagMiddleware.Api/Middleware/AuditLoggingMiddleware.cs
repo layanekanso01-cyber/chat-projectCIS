@@ -100,6 +100,10 @@ public class AuditLoggingMiddleware
         {
             return "ADMIN_AUDIT_VIEW";
         }
+        if (path.StartsWith("/api/admin/insights", StringComparison.OrdinalIgnoreCase))
+        {
+            return "ADMIN_INSIGHTS_VIEW";
+        }
         if (path.StartsWith("/api/rag/chat", StringComparison.OrdinalIgnoreCase))
         {
             return "RAG_QUERY";

@@ -9,6 +9,7 @@ export const AUDIT_LOG_ACTIONS = [
   "TOKEN_REFRESH_FAILED",
   "LOGOUT",
   "ADMIN_AUDIT_VIEW",
+  "ADMIN_INSIGHTS_VIEW",
   "RAG_QUERY",
   "RAG_COMPLIANCE_CHECK",
   "RAG_PROXY",
@@ -23,6 +24,12 @@ export async function fetchAuditLogs({ limit = 50, offset = 0, userEmail, path, 
   if (to) params.set("to", to);
 
   const response = await authFetch(`/api/admin/audit-logs?${params}`);
+  if (!response.ok) throw new Error(`Backend returned ${response.status}`);
+  return response.json();
+}
+
+export async function fetchInsights() {
+  const response = await authFetch("/api/admin/insights");
   if (!response.ok) throw new Error(`Backend returned ${response.status}`);
   return response.json();
 }

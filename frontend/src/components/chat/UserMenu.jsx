@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { LogOut, ScrollText, Compass } from "lucide-react";
+import { LogOut, ScrollText, Compass, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -8,6 +8,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { AuditLogDialog } from "@/components/admin/AuditLogDialog";
+import { InsightsDialog } from "@/components/admin/InsightsDialog";
 
 function initialsFor(user) {
   const source = user.name || user.email || "?";
@@ -39,6 +40,7 @@ function AccountAvatar({ user, className }) {
 
 export function UserMenu({ user, onLogout, isCollapsed, onStartTour }) {
   const [isAuditLogOpen, setIsAuditLogOpen] = useState(false);
+  const [isInsightsOpen, setIsInsightsOpen] = useState(false);
 
   if (!user) return null;
 
@@ -64,6 +66,12 @@ export function UserMenu({ user, onLogout, isCollapsed, onStartTour }) {
             <p className="truncate">{user.email}</p>
           </div>
           {user.role === "Admin" && (
+            <DropdownMenuItem onClick={() => setIsInsightsOpen(true)}>
+              <BarChart3 className="size-3.5" />
+              Insights
+            </DropdownMenuItem>
+          )}
+          {user.role === "Admin" && (
             <DropdownMenuItem onClick={() => setIsAuditLogOpen(true)}>
               <ScrollText className="size-3.5" />
               Audit log
@@ -82,7 +90,10 @@ export function UserMenu({ user, onLogout, isCollapsed, onStartTour }) {
         </DropdownMenuContent>
       </DropdownMenu>
       {user.role === "Admin" && (
-        <AuditLogDialog open={isAuditLogOpen} onOpenChange={setIsAuditLogOpen} />
+        <>
+          <InsightsDialog open={isInsightsOpen} onOpenChange={setIsInsightsOpen} />
+          <AuditLogDialog open={isAuditLogOpen} onOpenChange={setIsAuditLogOpen} />
+        </>
       )}
     </>
   );
