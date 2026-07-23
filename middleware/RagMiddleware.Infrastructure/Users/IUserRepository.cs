@@ -7,4 +7,5 @@ public interface IUserRepository
     Task<User?> FindByGoogleIdAsync(string googleId, CancellationToken cancellationToken);
     Task<User?> FindByIdAsync(string id, CancellationToken cancellationToken);
     Task CreateAsync(User user, CancellationToken cancellationToken);
+    Task UpdateRoleAsync(string id, string role, CancellationToken cancellationToken);
 }

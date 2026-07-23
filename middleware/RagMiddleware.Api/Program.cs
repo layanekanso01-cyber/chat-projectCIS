@@ -7,6 +7,8 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Polly;
 using Polly.Extensions.Http;
+using RagMiddleware.Api.Middleware;
+using RagMiddleware.Infrastructure.Audit;
 using RagMiddleware.Infrastructure.Auth;
 using RagMiddleware.Infrastructure.Mongo;
 using RagMiddleware.Infrastructure.RagApi;
@@ -68,6 +70,7 @@ builder.Services
 builder.Services.AddSingleton<MongoDbContext>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
+builder.Services.AddScoped<IAuditLogRepository, AuditLogRepository>();
 
 // --- JWT issuance (our own session tokens, handed to the UI after Google sign-in) ---
 builder.Services
@@ -142,6 +145,11 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.UseCors(FrontendCorsPolicy);
+
+// Must wrap (precede) auth, not follow it: UseAuthorization short-circuits the pipeline
+// on a failed check and never calls _next, so a logging middleware placed after it would
+// silently never run for the 401s that are often the most worth auditing.
+app.UseMiddleware<AuditLoggingMiddleware>();
 
 app.UseAuthentication();
 app.UseAuthorization();

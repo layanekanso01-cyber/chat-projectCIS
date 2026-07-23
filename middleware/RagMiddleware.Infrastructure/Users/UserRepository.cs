@@ -21,4 +21,10 @@ public class UserRepository : IUserRepository
 
     public Task CreateAsync(User user, CancellationToken cancellationToken) =>
         _users.InsertOneAsync(user, cancellationToken: cancellationToken);
+
+    public Task UpdateRoleAsync(string id, string role, CancellationToken cancellationToken) =>
+        _users.UpdateOneAsync(
+            u => u.Id == id,
+            Builders<User>.Update.Set(u => u.Role, role),
+            cancellationToken: cancellationToken);
 }

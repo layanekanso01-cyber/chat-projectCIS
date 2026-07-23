@@ -73,6 +73,12 @@ public class AuthController : ControllerBase
             return Unauthorized(new { detail = "Google did not return the expected profile claims." });
         }
 
+        // Admin isn't a self-service signup choice — it's granted by listing an email in
+        // config (Admin:Emails), checked on every login so promoting someone just means
+        // adding their email and having them sign in again.
+        var adminEmails = _configuration.GetSection("Admin:Emails").Get<string[]>() ?? [];
+        var isAdminEmail = adminEmails.Contains(email, StringComparer.OrdinalIgnoreCase);
+
         var user = await _users.FindByGoogleIdAsync(googleId, cancellationToken);
         if (user is null)
         {
@@ -83,8 +89,14 @@ public class AuthController : ControllerBase
                 Email = email,
                 DisplayName = name,
                 AvatarUrl = avatarUrl,
+                Role = isAdminEmail ? "Admin" : "User",
             };
             await _users.CreateAsync(user, cancellationToken);
+        }
+        else if (isAdminEmail && user.Role != "Admin")
+        {
+            await _users.UpdateRoleAsync(user.Id, "Admin", cancellationToken);
+            user.Role = "Admin";
         }
 
         var tokens = await _tokenService.IssueTokenPairAsync(user, cancellationToken);
