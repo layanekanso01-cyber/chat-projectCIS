@@ -380,11 +380,22 @@ _HISTORY_ONLY_PATTERN = re.compile(
 # Standalone greetings/small talk — matched against the *whole* message (not a substring
 # search like the pattern above) so it doesn't misfire on real questions that happen to
 # contain "hi" or "thanks" somewhere in them.
+#
+# Includes bare yes/no-style replies (a real gap found in testing): if the assistant's
+# last turn asked a question ("Want help with a specific control?") and the user replies
+# "yes", that reply has no document-search signal of its own — sending it to retrieval
+# scores it as off-topic and produces a generic refusal instead of a natural follow-up.
+# Matching it here doesn't discard the reply: _needs_document_retrieval only controls
+# whether *retrieval* runs, not whether history is sent — with history present, this
+# still reaches the model as a real prior turn, so it can answer "yes" in light of its
+# own previous question instead of treating it as an isolated, context-free message.
 _SMALL_TALK_PATTERN = re.compile(
     r"^(hi|hello|hey|hiya|yo|sup|good (morning|afternoon|evening)|"
     r"how('s| is) it going|how are you|"
     r"thanks|thank you|thx|ty|"
-    r"ok|okay|cool|great|nice( one)?|sounds good|"
+    r"ok|okay|cool|great|nice( one)?|sounds good|alright|fine|"
+    r"yes|yeah|yep|yup|sure|no|nope|nah|"
+    r"please|please do|go ahead|"
     r"bye|goodbye|see (ya|you)|later)[\s!.,?]*$",
     re.IGNORECASE,
 )
