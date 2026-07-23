@@ -20,6 +20,19 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
+// The SPA calls this API directly from the browser (fetch/XHR to :5292 from :5173) —
+// without this, every request gets blocked by the browser before it even reaches us.
+// Bearer-token auth (not cookies) is used for these calls, so AllowCredentials isn't
+// needed here.
+const string FrontendCorsPolicy = "Frontend";
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(FrontendCorsPolicy, policy =>
+        policy.WithOrigins("http://localhost:5173", "http://localhost:5174")
+              .AllowAnyHeader()
+              .AllowAnyMethod());
+});
+
 // Strongly-typed, validated config for the one credential this app holds on the RAG API's
 // behalf — no scattered Configuration["Key"] string lookups.
 builder.Services
@@ -127,6 +140,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseCors(FrontendCorsPolicy);
 
 app.UseAuthentication();
 app.UseAuthorization();
