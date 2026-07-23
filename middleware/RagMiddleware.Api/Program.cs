@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Options;
+using Polly;
+using Polly.Extensions.Http;
 using RagMiddleware.Infrastructure.RagApi;
 using Scalar.AspNetCore;
 
@@ -18,6 +20,21 @@ builder.Services
     .Validate(o => !string.IsNullOrWhiteSpace(o.BaseUrl), "RagApi:BaseUrl is not configured.")
     .Validate(o => !string.IsNullOrWhiteSpace(o.ApiKey), "RagApi:ApiKey is not configured.")
     .ValidateOnStart();
+
+builder.Services.AddHttpClient<IRagApiClient, RagApiClient>((sp, client) =>
+{
+    var options = sp.GetRequiredService<IOptions<RagApiOptions>>().Value;
+    client.BaseAddress = new Uri(options.BaseUrl);
+    // SSE streams (the compliance checklist especially, ~1-4 minutes for 18 sequential
+    // model calls) can run well past HttpClient's default 100s timeout — that default
+    // would kill a legitimate in-progress stream, not just a genuinely hung request.
+    client.Timeout = Timeout.InfiniteTimeSpan;
+})
+.AddTransientHttpErrorPolicy(policy => policy.WaitAndRetryAsync(
+    2, retryAttempt => TimeSpan.FromMilliseconds(200 * Math.Pow(2, retryAttempt))));
+// Retries only ever apply to the connect+response-headers phase (that's the SendAsync
+// call Polly wraps) — once a stream has started flowing to the browser, a mid-stream
+// failure surfaces as-is rather than silently retrying and duplicating output.
 
 var app = builder.Build();
 
