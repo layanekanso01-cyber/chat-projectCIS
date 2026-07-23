@@ -142,6 +142,48 @@ Runs on `http://localhost:5173`.
 
 
 
+\## Testing
+
+
+
+\*\*Backend\*\* (`backend/tests/`, pytest) — three tiers, run from `backend/` with the venv active:
+
+```bash
+
+pytest -m "not integration and not e2e"   # fast, pure logic only, no live services needed
+
+pytest -m integration                     # needs Weaviate running (retrieval-dependent)
+
+pytest -m e2e                             # needs Weaviate + Ollama, slow (real generation calls)
+
+pytest                                    # everything
+
+```
+
+Each fixed bug this session (numbered-control retrieval, off-topic refusal, "why"/"answer them" routing, the Control 18 bipartite-matching gap, the compliance-checklist generic-title bug, Gemini's daily-vs-per-minute quota handling) has a regression test. One integration test (`test_safeguard_4_1_keyword_match_known_gap`) is a documented `xfail` tracking a known ingestion-level gap (Safeguards 1.1/4.1 have no matching chunk) — not a retrieval-logic bug.
+
+
+
+\*\*Frontend\*\* (Vitest + React Testing Library, jsdom environment):
+
+```bash
+
+cd frontend
+
+npm test
+
+```
+
+Covers `lib/utils.js` (date bucketing/filtering, markdown formatting, slugify) and the most interaction-heavy, self-contained components — `SourceCitations`/`SourceCard` (expand/collapse, copy-passage, citation-click force-open + highlight), `ComplianceChecklist` (status badges, progress text), `FollowUpSuggestions`, and `MessageActions` (conditional Show-sources/Regenerate visibility, version switcher). Test files are colocated with what they test (`Component.test.jsx`).
+
+Still no coverage for `App.jsx` itself (the mode-separation / provider-tracking orchestration) or true E2E flows — that would need mocking `useChatStream`/`useConversations`/`fetch` or committing Playwright as a real dependency, both bigger lifts than component-level tests. The app's end-to-end behavior has been verified manually and via ad-hoc Playwright scripts throughout development, but nothing at that level is a committed, repeatable test yet.
+
+
+
+One real bug worth knowing if you write more clipboard-related tests: `@testing-library/user-event`'s `setup()` installs its own `navigator.clipboard` mock, which will silently clobber a hand-rolled one if you stub the clipboard *before* calling `userEvent.setup()`. Stub it after.
+
+
+
 \## Current status / roadmap
 
 
@@ -165,4 +207,6 @@ Runs on `http://localhost:5173`.
 \- \[x] Response regeneration (with version switching)
 
 \- \[ ] Visual/UI polish pass
+
+\- \[x] Automated regression tests (backend pytest — unit/integration/e2e; frontend Vitest — lib/utils.js)
 
