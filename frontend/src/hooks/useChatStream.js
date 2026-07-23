@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
-
-const API_URL = "http://127.0.0.1:8000";
+import { RAG_API_PREFIX } from "@/lib/config";
+import { authFetch } from "@/api/httpClient";
 
 function parseSSEFrame(frame) {
   let event = "message";
@@ -27,13 +27,13 @@ export function useChatStream() {
   const abortRef = useRef(null);
 
   const streamRequest = useCallback(
-    async (url, body, { onSources, onToken, onDone, onFollowUps, onItem, onError }) => {
+    async (path, body, { onSources, onToken, onDone, onFollowUps, onItem, onError }) => {
       setIsStreaming(true);
       const controller = new AbortController();
       abortRef.current = controller;
 
       try {
-        const response = await fetch(url, {
+        const response = await authFetch(path, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
@@ -85,7 +85,7 @@ export function useChatStream() {
   const sendMessage = useCallback(
     (question, conversationId, provider, callbacks) =>
       streamRequest(
-        `${API_URL}/chat/stream`,
+        `${RAG_API_PREFIX}/chat/stream`,
         { question, conversation_id: conversationId, provider },
         callbacks
       ),
@@ -95,7 +95,7 @@ export function useChatStream() {
   const regenerateMessage = useCallback(
     (conversationId, messageId, provider, callbacks) =>
       streamRequest(
-        `${API_URL}/conversations/${conversationId}/messages/${messageId}/regenerate`,
+        `${RAG_API_PREFIX}/conversations/${conversationId}/messages/${messageId}/regenerate`,
         { provider },
         callbacks
       ),
@@ -105,7 +105,7 @@ export function useChatStream() {
   const runComplianceCheck = useCallback(
     (description, conversationId, provider, callbacks) =>
       streamRequest(
-        `${API_URL}/compliance-check/stream`,
+        `${RAG_API_PREFIX}/compliance-check/stream`,
         { description, conversation_id: conversationId, provider },
         callbacks
       ),
