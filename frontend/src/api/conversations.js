@@ -37,10 +37,11 @@ export function deleteConversation(id) {
   return request(`/conversations/${id}`, { method: "DELETE" });
 }
 
-export function setMessageFeedback(conversationId, messageId, feedback, feedbackReason) {
+export function setMessageFeedback(conversationId, messageId, feedback, feedbackReason, feedbackComment) {
   return patchJson(`/conversations/${conversationId}/messages/${messageId}/feedback`, {
     feedback,
     feedback_reason: feedbackReason ?? null,
+    feedback_comment: feedbackComment ?? null,
   });
 }
 

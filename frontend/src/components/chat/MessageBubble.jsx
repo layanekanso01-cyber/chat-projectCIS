@@ -135,12 +135,21 @@ export function MessageBubble({
   followUpQuestions = [],
   onSelectFollowUp,
   error = null,
+  isRequestInFlight = false,
 }) {
   const isUser = role === "user";
   const isComplianceReport = type === "compliance_report";
   const isPending = !isUser && isStreaming && !isComplianceReport && content.length === 0;
   const isCompliancePending = isComplianceReport && isStreaming && checklist.length === 0;
   const canShowActions = !isStreaming && !!serverId;
+  // This message's own stream can finish (isStreaming above goes false, e.g. once the
+  // "done" event lands) a few seconds before the underlying fetch itself actually closes
+  // — it stays open a little longer to deliver trailing follow-up-question data. Actions
+  // that start a *new* request (regenerate) are gated on that fetch having fully closed,
+  // not just on this message looking finished, or a click in that window would silently
+  // no-op: the button looked ready but the app's global "one stream at a time" guard
+  // would still reject it.
+  const canRegenerate = canShowActions && !isRequestInFlight;
   const hasMultipleVersions = versions.length > 1;
 
   const [sourcesVisible, setSourcesVisible] = useState(false);
@@ -219,6 +228,7 @@ export function MessageBubble({
             sourcesVisible={sourcesVisible}
             onToggleSources={sources.length > 0 ? () => setSourcesVisible((prev) => !prev) : null}
             showRegenerate={!isComplianceReport}
+            regenerateDisabled={!canRegenerate}
           />
         )}
 

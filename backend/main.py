@@ -93,6 +93,7 @@ class RegenerateRequest(BaseModel):
 class FeedbackRequest(BaseModel):
     feedback: Optional[Literal["up", "down"]] = None
     feedback_reason: Optional[str] = Field(None, max_length=500)
+    feedback_comment: Optional[str] = Field(None, max_length=500)
 
 
 class ActiveVersionRequest(BaseModel):
@@ -322,7 +323,11 @@ async def delete_conversation_route(conversation_id: str):
 @app.patch("/conversations/{conversation_id}/messages/{message_id}/feedback")
 async def set_feedback_route(conversation_id: str, message_id: str, request: FeedbackRequest):
     updated = await set_message_feedback(
-        conversation_id, message_id, request.feedback, request.feedback_reason
+        conversation_id,
+        message_id,
+        request.feedback,
+        request.feedback_reason,
+        request.feedback_comment,
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Message not found")
@@ -331,6 +336,7 @@ async def set_feedback_route(conversation_id: str, message_id: str, request: Fee
         "message_id": message_id,
         "feedback": request.feedback,
         "feedback_reason": request.feedback_reason,
+        "feedback_comment": request.feedback_comment,
     }
 
 

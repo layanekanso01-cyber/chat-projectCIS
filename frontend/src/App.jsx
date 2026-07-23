@@ -328,7 +328,7 @@ function App() {
     );
   }
 
-  async function handleFeedback(clientMessageId, feedback, feedbackReason) {
+  async function handleFeedback(clientMessageId, feedback, feedbackReason, feedbackComment) {
     const message = messages.find((item) => item.id === clientMessageId);
     if (!message?.serverId || !conversationId) return;
 
@@ -343,7 +343,8 @@ function App() {
         conversationId,
         message.serverId,
         feedback,
-        feedbackReason
+        feedbackReason,
+        feedbackComment
       );
     } catch (error) {
       console.error(error);
@@ -471,6 +472,7 @@ function App() {
           onRegenerate={handleRegenerate}
           onSwitchVersion={handleSwitchVersion}
           onSelectFollowUp={handleSelectFollowUp}
+          isRequestInFlight={isStreaming}
         />
         <ChatInput
           mode={mode}

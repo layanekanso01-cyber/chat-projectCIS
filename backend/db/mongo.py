@@ -164,7 +164,7 @@ async def get_recent_history(conversation_id: str, limit_turns: int = 3) -> list
 
 
 async def set_message_feedback(
-    conversation_id: str, message_id: str, feedback, feedback_reason
+    conversation_id: str, message_id: str, feedback, feedback_reason, feedback_comment=None
 ) -> bool:
     """Updates a message's feedback fields. Returns False if no matching message was found."""
     result = await _db.conversations.update_one(
@@ -173,6 +173,7 @@ async def set_message_feedback(
             "$set": {
                 "messages.$.feedback": feedback,
                 "messages.$.feedback_reason": feedback_reason,
+                "messages.$.feedback_comment": feedback_comment,
             }
         },
     )

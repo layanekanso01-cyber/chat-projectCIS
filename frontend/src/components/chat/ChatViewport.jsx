@@ -12,6 +12,7 @@ export function ChatViewport({
   onRegenerate,
   onSwitchVersion,
   onSelectFollowUp,
+  isRequestInFlight = false,
 }) {
   const containerRef = useRef(null);
   const prevLengthRef = useRef(messages.length);
@@ -73,8 +74,8 @@ export function ChatViewport({
               sources={message.sources}
               serverId={message.serverId}
               feedback={message.feedback}
-              onFeedback={(feedback, feedbackReason) =>
-                onFeedback?.(message.id, feedback, feedbackReason)
+              onFeedback={(feedback, feedbackReason, feedbackComment) =>
+                onFeedback?.(message.id, feedback, feedbackReason, feedbackComment)
               }
               versions={message.versions}
               activeVersionIndex={message.activeVersionIndex}
@@ -83,6 +84,7 @@ export function ChatViewport({
               followUpQuestions={message.followUpQuestions}
               error={message.error}
               onSelectFollowUp={onSelectFollowUp}
+              isRequestInFlight={isRequestInFlight}
             />
           ))}
         </div>

@@ -8,11 +8,11 @@ export function FeedbackButtons({ feedback, onFeedback }) {
 
   function handleThumbsUp() {
     // Clicking an already-active thumbs-up clears it.
-    onFeedback(feedback === "up" ? null : "up", null);
+    onFeedback(feedback === "up" ? null : "up", null, null);
   }
 
-  function handleThumbsDownSubmit(reasonText) {
-    onFeedback("down", reasonText);
+  function handleThumbsDownSubmit(reason, comment) {
+    onFeedback("down", reason, comment);
     setIsDialogOpen(false);
   }
 

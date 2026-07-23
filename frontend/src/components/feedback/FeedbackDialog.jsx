@@ -24,10 +24,7 @@ export function FeedbackDialog({ open, onOpenChange, onSubmit }) {
 
   function handleSubmit() {
     if (!selectedReason) return;
-    const reasonText = comment.trim()
-      ? `${selectedReason}: ${comment.trim()}`
-      : selectedReason;
-    onSubmit(reasonText);
+    onSubmit(selectedReason, comment.trim() || null);
     setSelectedReason(null);
     setComment("");
   }

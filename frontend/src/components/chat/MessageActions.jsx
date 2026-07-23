@@ -74,6 +74,7 @@ export function MessageActions({
   onToggleSources,
   showRegenerate = true,
   showFeedback = true,
+  regenerateDisabled = false,
 }) {
   return (
     <div className="mt-1.5 flex items-center gap-1 opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100">
@@ -87,6 +88,7 @@ export function MessageActions({
               variant="ghost"
               size="icon-xs"
               aria-label="Regenerate response"
+              disabled={regenerateDisabled}
               onClick={onRegenerate}
               className="text-muted-foreground"
             >
