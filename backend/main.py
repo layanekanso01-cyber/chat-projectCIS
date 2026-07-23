@@ -1,12 +1,16 @@
 import json
+import os
 from contextlib import asynccontextmanager
 from typing import Literal, Optional
 
-from fastapi import FastAPI, HTTPException
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.concurrency import iterate_in_threadpool
+
+load_dotenv()
 
 from rag.pipeline import init_pipeline, shutdown_pipeline, answer_question, stream_answer
 from db.mongo import (
@@ -49,6 +53,20 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PATCH"],
     allow_headers=["*"],
 )
+
+# Only the .NET middleware knows this key — the browser/UI never does. This is what
+# makes the credential-hiding promise in the middleware project real: even if someone
+# points a browser straight at this API, every route but /health returns 401 without it.
+MIDDLEWARE_SHARED_KEY = os.environ.get("MIDDLEWARE_SHARED_KEY")
+_PUBLIC_PATHS = {"/health"}
+
+
+@app.middleware("http")
+async def require_middleware_key(request: Request, call_next):
+    if request.method != "OPTIONS" and request.url.path not in _PUBLIC_PATHS:
+        if not MIDDLEWARE_SHARED_KEY or request.headers.get("X-Middleware-Key") != MIDDLEWARE_SHARED_KEY:
+            return JSONResponse(status_code=401, content={"detail": "Missing or invalid middleware key"})
+    return await call_next(request)
 
 
 class ChatRequest(BaseModel):
