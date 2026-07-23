@@ -29,28 +29,74 @@ def shutdown_db():
         _client.close()
 
 
+_TITLE_MAX_LENGTH = 60
+
+
 def _now():
     return datetime.now(timezone.utc).isoformat()
+
+
+def _default_title(text: str) -> str:
+    text = text.strip()
+    return text[:_TITLE_MAX_LENGTH] + "..." if len(text) > _TITLE_MAX_LENGTH else text
+
+
+def _with_effective_title(conversation: dict) -> dict:
+    """A conversation's `title` is None until explicitly renamed — fall back to a
+    truncated first user message so the sidebar always has something sensible to show."""
+    if conversation.get("title"):
+        return conversation
+    first_user_message = next(
+        (m for m in conversation.get("messages", []) if m["role"] == "user"), None
+    )
+    conversation["title"] = (
+        _default_title(first_user_message["content"]) if first_user_message else "New conversation"
+    )
+    return conversation
 
 
 async def create_conversation() -> str:
     """Creates a new empty conversation, returns its ID."""
     conversation_id = f"conv_{uuid4().hex[:12]}"
+    now = _now()
     await _db.conversations.insert_one({
         "_id": conversation_id,
-        "created_at": _now(),
+        "title": None,
+        "pinned": False,
+        "kind": "chat",
+        "created_at": now,
+        "updated_at": now,
         "messages": [],
     })
     return conversation_id
 
 
-async def add_message(conversation_id: str, role: str, content: str, sources=None) -> str:
+async def set_conversation_kind(conversation_id: str, kind: str) -> bool:
+    """Marks a conversation as "chat" or "compliance" so the two modes' conversations
+    never mix in the same thread — the frontend keeps a separate active conversation per
+    mode and uses this to route a reopened conversation back to the right mode."""
+    result = await _db.conversations.update_one(
+        {"_id": conversation_id},
+        {"$set": {"kind": kind}},
+    )
+    return result.matched_count > 0
+
+
+async def add_message(
+    conversation_id: str,
+    role: str,
+    content: str,
+    sources=None,
+    message_type: str = "text",
+    checklist=None,
+) -> str:
     """Appends a message to a conversation, returns the new message's ID."""
     message_id = f"msg_{uuid4().hex[:12]}"
     message = {
         "id": message_id,
         "role": role,
         "content": content,
+        "type": message_type,
         "timestamp": _now(),
     }
     if role == "assistant":
@@ -61,17 +107,50 @@ async def add_message(conversation_id: str, role: str, content: str, sources=Non
             {"content": content, "sources": sources or [], "timestamp": message["timestamp"]}
         ]
         message["active_version"] = 0
+        if checklist is not None:
+            message["checklist"] = checklist
 
     await _db.conversations.update_one(
         {"_id": conversation_id},
-        {"$push": {"messages": message}},
+        {
+            "$push": {"messages": message},
+            "$set": {"updated_at": message["timestamp"]},
+        },
     )
     return message_id
 
 
 async def get_conversation(conversation_id: str):
     """Fetches a full conversation by ID, or None if it doesn't exist."""
-    return await _db.conversations.find_one({"_id": conversation_id})
+    conversation = await _db.conversations.find_one({"_id": conversation_id})
+    return _with_effective_title(conversation) if conversation else None
+
+
+async def rename_conversation(conversation_id: str, title: str) -> bool:
+    """Sets an explicit conversation title, overriding the default first-message fallback."""
+    title = title.strip()
+    if not title:
+        return False
+    result = await _db.conversations.update_one(
+        {"_id": conversation_id},
+        {"$set": {"title": title}},
+    )
+    return result.matched_count > 0
+
+
+async def set_conversation_pinned(conversation_id: str, pinned: bool) -> bool:
+    """Toggles a conversation's pinned state (pinned conversations sort to the top)."""
+    result = await _db.conversations.update_one(
+        {"_id": conversation_id},
+        {"$set": {"pinned": pinned}},
+    )
+    return result.matched_count > 0
+
+
+async def delete_conversation(conversation_id: str) -> bool:
+    """Deletes a conversation entirely. Returns False if it didn't exist."""
+    result = await _db.conversations.delete_one({"_id": conversation_id})
+    return result.deleted_count > 0
 
 
 async def get_recent_history(conversation_id: str, limit_turns: int = 3) -> list[dict]:
@@ -168,24 +247,35 @@ async def set_active_message_version(conversation_id: str, message_id: str, vers
 
 
 async def list_conversations(limit: int = 50) -> list[dict]:
-    """Lightweight summaries of conversations, most recently created first."""
+    """Lightweight summaries of conversations, most recently active first."""
     cursor = (
         _db.conversations.find(
             {},
-            {"_id": 1, "created_at": 1, "messages": {"$slice": 1}},
+            {
+                "_id": 1,
+                "title": 1,
+                "pinned": 1,
+                "kind": 1,
+                "created_at": 1,
+                "updated_at": 1,
+                "messages": {"$slice": 1},
+            },
         )
-        .sort("created_at", -1)
+        .sort([("pinned", -1), ("updated_at", -1)])
         .limit(limit)
     )
 
     summaries = []
     async for document in cursor:
-        first_message = document["messages"][0] if document.get("messages") else None
+        document = _with_effective_title(document)
         summaries.append(
             {
                 "conversation_id": document["_id"],
+                "title": document["title"],
+                "pinned": document.get("pinned", False),
+                "kind": document.get("kind", "chat"),
                 "created_at": document.get("created_at"),
-                "preview": first_message["content"][:80] if first_message else None,
+                "updated_at": document.get("updated_at", document.get("created_at")),
             }
         )
     return summaries
