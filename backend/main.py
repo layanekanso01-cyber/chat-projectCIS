@@ -142,6 +142,7 @@ async def chat(request: ChatRequest):
         "assistant",
         result["answer"],
         sources=result["sources"],
+        provider=request.provider,
     )
 
     return {
@@ -204,7 +205,9 @@ async def chat_stream(request: ChatRequest):
     await add_message(conversation_id, "user", request.question)
 
     async def on_done(full_answer, sources):
-        message_id = await add_message(conversation_id, "assistant", full_answer, sources=sources)
+        message_id = await add_message(
+            conversation_id, "assistant", full_answer, sources=sources, provider=request.provider
+        )
         return {"conversation_id": conversation_id, "message_id": message_id}
 
     return _sse_response(request.question, history, on_done, provider=request.provider)
@@ -236,7 +239,7 @@ async def regenerate_message_route(conversation_id: str, message_id: str, reques
 
     async def on_done(full_answer, sources):
         version_index = await add_message_version(
-            conversation_id, message_id, full_answer, sources=sources
+            conversation_id, message_id, full_answer, sources=sources, provider=request.provider
         )
         return {
             "conversation_id": conversation_id,
@@ -273,6 +276,7 @@ async def compliance_check_stream(request: ComplianceCheckRequest):
                         content,
                         message_type="compliance_report",
                         checklist=payload,
+                        provider=request.provider,
                     )
                     yield _sse_event(
                         "done", {"conversation_id": conversation_id, "message_id": message_id}

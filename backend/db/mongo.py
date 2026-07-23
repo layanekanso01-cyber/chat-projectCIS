@@ -89,6 +89,7 @@ async def add_message(
     sources=None,
     message_type: str = "text",
     checklist=None,
+    provider=None,
 ) -> str:
     """Appends a message to a conversation, returns the new message's ID."""
     message_id = f"msg_{uuid4().hex[:12]}"
@@ -103,8 +104,14 @@ async def add_message(
         message["sources"] = sources or []
         message["feedback"] = None
         message["feedback_reason"] = None
+        message["provider"] = provider
         message["versions"] = [
-            {"content": content, "sources": sources or [], "timestamp": message["timestamp"]}
+            {
+                "content": content,
+                "sources": sources or [],
+                "timestamp": message["timestamp"],
+                "provider": provider,
+            }
         ]
         message["active_version"] = 0
         if checklist is not None:
@@ -180,7 +187,7 @@ async def set_message_feedback(
     return result.matched_count > 0
 
 
-async def add_message_version(conversation_id: str, message_id: str, content: str, sources=None):
+async def add_message_version(conversation_id: str, message_id: str, content: str, sources=None, provider=None):
     """Appends a new version to an assistant message and makes it active.
 
     Returns the new version's index, or None if the message wasn't found.
@@ -201,9 +208,12 @@ async def add_message_version(conversation_id: str, message_id: str, content: st
             "content": existing.get("content", ""),
             "sources": existing.get("sources", []),
             "timestamp": existing.get("timestamp"),
+            "provider": existing.get("provider"),
         }
     ]
-    versions.append({"content": content, "sources": sources or [], "timestamp": _now()})
+    versions.append(
+        {"content": content, "sources": sources or [], "timestamp": _now(), "provider": provider}
+    )
     new_index = len(versions) - 1
 
     await _db.conversations.update_one(
@@ -213,6 +223,7 @@ async def add_message_version(conversation_id: str, message_id: str, content: st
                 "messages.$.versions": versions,
                 "messages.$.content": content,
                 "messages.$.sources": sources or [],
+                "messages.$.provider": provider,
                 "messages.$.active_version": new_index,
             }
         },
@@ -241,6 +252,7 @@ async def set_active_message_version(conversation_id: str, message_id: str, vers
                 "messages.$.active_version": version_index,
                 "messages.$.content": version["content"],
                 "messages.$.sources": version.get("sources", []),
+                "messages.$.provider": version.get("provider"),
             }
         },
     )
