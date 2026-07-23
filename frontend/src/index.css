@@ -1,13 +1,13 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
     --font-heading: var(--font-sans);
-    --font-sans: 'Geist Variable', sans-serif;
+    --font-sans: var(--font-sans);
+    --font-mono: var(--font-mono);
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -16,11 +16,6 @@
     --color-sidebar-primary: var(--sidebar-primary);
     --color-sidebar-foreground: var(--sidebar-foreground);
     --color-sidebar: var(--sidebar);
-    --color-chart-5: var(--chart-5);
-    --color-chart-4: var(--chart-4);
-    --color-chart-3: var(--chart-3);
-    --color-chart-2: var(--chart-2);
-    --color-chart-1: var(--chart-1);
     --color-ring: var(--ring);
     --color-input: var(--input);
     --color-border: var(--border);
@@ -39,6 +34,12 @@
     --color-card: var(--card);
     --color-foreground: var(--foreground);
     --color-background: var(--background);
+    /* Feature-specific tokens (evidence highlighting, relevance labels) */
+    --color-highlight-bg: var(--highlight-bg);
+    --color-highlight-text: var(--highlight-text);
+    --color-relevance-high: var(--relevance-high);
+    --color-relevance-medium: var(--relevance-medium);
+    --color-relevance-low: var(--relevance-low);
     --radius-sm: calc(var(--radius) * 0.6);
     --radius-md: calc(var(--radius) * 0.8);
     --radius-lg: var(--radius);
@@ -49,72 +50,77 @@
 }
 
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
+    --font-sans: -apple-system, "Segoe UI", Inter, Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", Consolas, monospace;
+
+    --background: #f8fafc;
+    --foreground: #0d0d0d;
+    --card: #ffffff;
+    --card-foreground: #0d0d0d;
+    --popover: #ffffff;
+    --popover-foreground: #0d0d0d;
+    --primary: #2f6feb;
+    --primary-foreground: #ffffff;
+    --secondary: #f4f4f5;
+    --secondary-foreground: #0d0d0d;
+    --muted: #f4f4f5;
+    --muted-foreground: #6e6e80;
+    --accent: #f4f4f5;
+    --accent-foreground: #0d0d0d;
+    --destructive: #d94f4f;
+    --border: #e5e5e5;
+    --input: #e5e5e5;
+    --ring: #2f6feb;
+    --radius: 0.75rem;
+    --sidebar: #f9f9f9;
+    --sidebar-foreground: #0d0d0d;
+    --sidebar-primary: #2f6feb;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #ececec;
+    --sidebar-accent-foreground: #0d0d0d;
+    --sidebar-border: #e5e5e5;
+    --sidebar-ring: #2f6feb;
+
+    --highlight-bg: #fef08a;
+    --highlight-text: #422006;
+    --relevance-high: #16a34a;
+    --relevance-medium: #ca8a04;
+    --relevance-low: #a8a29e;
 }
 
 .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
+    --background: #212121;
+    --foreground: #ececec;
+    --card: #2f2f2f;
+    --card-foreground: #ececec;
+    --popover: #2f2f2f;
+    --popover-foreground: #ececec;
+    --primary: #5b8def;
+    --primary-foreground: #0d0d0d;
+    --secondary: #2f2f2f;
+    --secondary-foreground: #ececec;
+    --muted: #2f2f2f;
+    --muted-foreground: #9b9b9b;
+    --accent: #2f2f2f;
+    --accent-foreground: #ececec;
+    --destructive: #e56868;
+    --border: #3a3a3a;
+    --input: #3a3a3a;
+    --ring: #5b8def;
+    --sidebar: #171717;
+    --sidebar-foreground: #ececec;
+    --sidebar-primary: #5b8def;
+    --sidebar-primary-foreground: #0d0d0d;
+    --sidebar-accent: #2a2a2a;
+    --sidebar-accent-foreground: #ececec;
+    --sidebar-border: #3a3a3a;
+    --sidebar-ring: #5b8def;
+
+    --highlight-bg: #a16207;
+    --highlight-text: #fef9c3;
+    --relevance-high: #4ade80;
+    --relevance-medium: #facc15;
+    --relevance-low: #78716c;
 }
 
 @layer base {
@@ -127,4 +133,23 @@
   html {
     @apply font-sans;
     }
+}
+
+/* Subtle repeating shield motif — same glyph as the app's own iconography
+   (lucide ShieldCheck), rendered via mask-image so its color stays theme-aware
+   instead of being baked into a static image. Confined to the empty-state view
+   only (not the main chat background) and kept at very low opacity so it reads
+   as texture, not a distraction behind message text. */
+.security-wallpaper {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-color: var(--muted-foreground);
+  opacity: 0.04;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96'%3E%3Cg transform='rotate(12 48 48) translate(24 24) scale(2)'%3E%3Cpath d='M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z'/%3E%3C/g%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96'%3E%3Cg transform='rotate(12 48 48) translate(24 24) scale(2)'%3E%3Cpath d='M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z'/%3E%3C/g%3E%3C/svg%3E");
+  -webkit-mask-repeat: repeat;
+  mask-repeat: repeat;
+  -webkit-mask-size: 96px 96px;
+  mask-size: 96px 96px;
 }
