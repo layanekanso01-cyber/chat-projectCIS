@@ -27,7 +27,7 @@ export function useChatStream() {
   const abortRef = useRef(null);
 
   const streamRequest = useCallback(
-    async (url, body, { onSources, onToken, onDone, onError }) => {
+    async (url, body, { onSources, onToken, onDone, onFollowUps, onItem, onError }) => {
       setIsStreaming(true);
       const controller = new AbortController();
       abortRef.current = controller;
@@ -65,6 +65,8 @@ export function useChatStream() {
             if (event === "sources") onSources?.(payload.sources);
             else if (event === "token") onToken?.(payload.text);
             else if (event === "done") onDone?.(payload);
+            else if (event === "follow_ups") onFollowUps?.(payload.questions);
+            else if (event === "item") onItem?.(payload);
             else if (event === "error") onError?.(payload.detail);
           }
         }
@@ -81,20 +83,30 @@ export function useChatStream() {
   );
 
   const sendMessage = useCallback(
-    (question, conversationId, callbacks) =>
+    (question, conversationId, provider, callbacks) =>
       streamRequest(
         `${API_URL}/chat/stream`,
-        { question, conversation_id: conversationId },
+        { question, conversation_id: conversationId, provider },
         callbacks
       ),
     [streamRequest]
   );
 
   const regenerateMessage = useCallback(
-    (conversationId, messageId, callbacks) =>
+    (conversationId, messageId, provider, callbacks) =>
       streamRequest(
         `${API_URL}/conversations/${conversationId}/messages/${messageId}/regenerate`,
-        {},
+        { provider },
+        callbacks
+      ),
+    [streamRequest]
+  );
+
+  const runComplianceCheck = useCallback(
+    (description, conversationId, provider, callbacks) =>
+      streamRequest(
+        `${API_URL}/compliance-check/stream`,
+        { description, conversation_id: conversationId, provider },
         callbacks
       ),
     [streamRequest]
@@ -104,5 +116,5 @@ export function useChatStream() {
     abortRef.current?.abort();
   }, []);
 
-  return { sendMessage, regenerateMessage, isStreaming, cancelStream };
+  return { sendMessage, regenerateMessage, runComplianceCheck, isStreaming, cancelStream };
 }
