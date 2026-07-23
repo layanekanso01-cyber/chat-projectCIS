@@ -9,6 +9,12 @@ node_modules/
 dist/
 .env.local
 
+# .NET
+middleware/**/bin/
+middleware/**/obj/
+middleware/**/appsettings.Development.json
+*.user
+
 # OS
 .DS_Store
 Thumbs.db
