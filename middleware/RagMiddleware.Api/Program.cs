@@ -1,7 +1,16 @@
+using System.Text;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.Google;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Tokens;
 using Polly;
 using Polly.Extensions.Http;
+using RagMiddleware.Infrastructure.Auth;
+using RagMiddleware.Infrastructure.Mongo;
 using RagMiddleware.Infrastructure.RagApi;
+using RagMiddleware.Infrastructure.Users;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -36,6 +45,78 @@ builder.Services.AddHttpClient<IRagApiClient, RagApiClient>((sp, client) =>
 // call Polly wraps) — once a stream has started flowing to the browser, a mid-stream
 // failure surfaces as-is rather than silently retrying and duplicating output.
 
+// --- MongoDB (Users, RefreshTokens — the middleware's own data, separate from the RAG
+// app's own MongoDB database) ---
+builder.Services
+    .AddOptions<MongoDbOptions>()
+    .Bind(builder.Configuration.GetSection(MongoDbOptions.SectionName))
+    .Validate(o => !string.IsNullOrWhiteSpace(o.ConnectionString), "MongoDb:ConnectionString is not configured.")
+    .ValidateOnStart();
+builder.Services.AddSingleton<MongoDbContext>();
+builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
+
+// --- JWT issuance (our own session tokens, handed to the UI after Google sign-in) ---
+builder.Services
+    .AddOptions<JwtOptions>()
+    .Bind(builder.Configuration.GetSection(JwtOptions.SectionName))
+    .Validate(o => !string.IsNullOrWhiteSpace(o.SigningKey), "Jwt:SigningKey is not configured.")
+    .ValidateOnStart();
+builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
+
+// --- Authentication: Google is only ever used for the brief login handshake (backed by
+// a short-lived cookie); every other request to the API is authenticated via the JWT we
+// issue ourselves once that handshake completes. ---
+var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
+    ?? throw new InvalidOperationException("Jwt configuration section is missing.");
+
+builder.Services.AddAuthentication(options =>
+{
+    // [Authorize] failures anywhere in the app (RagProxyController, /api/auth/me, etc.)
+    // must return a clean 401, not redirect to Google — so JwtBearer is the default for
+    // both authenticate AND challenge. The one place that *should* redirect to Google
+    // (AuthController.LoginGoogle) does so via an explicit Challenge(..., GoogleDefaults
+    // .AuthenticationScheme) call, which doesn't depend on this default at all.
+    options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultSignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+})
+.AddCookie(options =>
+{
+    options.Cookie.Name = "RagMiddleware.OAuthHandshake";
+    options.ExpireTimeSpan = TimeSpan.FromMinutes(10);
+})
+.AddGoogle(options =>
+{
+    options.ClientId = builder.Configuration["Authentication:Google:ClientId"]
+        ?? throw new InvalidOperationException("Authentication:Google:ClientId is not configured.");
+    options.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"]
+        ?? throw new InvalidOperationException("Authentication:Google:ClientSecret is not configured.");
+    // Must match exactly what's registered in Google Cloud Console for this app.
+    options.CallbackPath = "/api/auth/google/callback";
+    options.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    // Without this, the handler silently renames "sub"/"email" to the long legacy
+    // ClaimTypes.NameIdentifier/Email URIs on validation (its default behavior), which
+    // breaks every FindFirstValue(JwtRegisteredClaimNames.Sub/.Email) lookup elsewhere in
+    // this app — those short names are exactly what JwtTokenService.CreateAccessToken
+    // issues, so keeping claim types unmapped keeps issuance and reads symmetric.
+    options.MapInboundClaims = false;
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidIssuer = jwtOptions.Issuer,
+        ValidateAudience = true,
+        ValidAudience = jwtOptions.Audience,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.SigningKey)),
+    };
+});
+
+builder.Services.AddAuthorization();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -46,6 +127,9 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapControllers();
 
