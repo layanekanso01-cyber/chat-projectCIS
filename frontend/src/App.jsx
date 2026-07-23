@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChatViewport } from "@/components/chat/ChatViewport";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { ConversationSidebar } from "@/components/chat/ConversationSidebar";
+import { GuidedTour } from "@/components/chat/GuidedTour";
 import { LoginScreen } from "@/components/auth/LoginScreen";
 import { useChatStream } from "@/hooks/useChatStream";
 import { useConversations } from "@/hooks/useConversations";
@@ -12,6 +13,7 @@ import { getAccessToken, getRefreshToken, setTokens, clearTokens, hasTokens } fr
 import { checklistToMarkdown } from "@/lib/utils";
 
 const PROVIDER_STORAGE_KEY = "provider";
+const TOUR_SEEN_STORAGE_KEY = "has_seen_tour";
 
 // Runs once at module load — earlier than any component effect — so that by
 // the time hooks like useConversations fire their fetch-on-mount, a token
@@ -72,6 +74,7 @@ function App() {
   const [conversationId, setConversationId] = useState(null);
   const [authStatus, setAuthStatus] = useState("checking"); // "checking" | "authenticated" | "unauthenticated"
   const [user, setUser] = useState(null);
+  const [isTourOpen, setIsTourOpen] = useState(false);
   // Which LLM backend generates answers — a single global choice (not per-conversation),
   // sent with every request. Persisted so it survives a refresh, same as the theme.
   const [provider, setProvider] = useState(getInitialProvider);
@@ -123,6 +126,17 @@ function App() {
         setAuthStatus("unauthenticated");
       });
   }, []);
+
+  useEffect(() => {
+    if (authStatus === "authenticated" && !localStorage.getItem(TOUR_SEEN_STORAGE_KEY)) {
+      setIsTourOpen(true);
+    }
+  }, [authStatus]);
+
+  function handleCloseTour() {
+    setIsTourOpen(false);
+    localStorage.setItem(TOUR_SEEN_STORAGE_KEY, "true");
+  }
 
   function handleLogout() {
     const accessToken = getAccessToken();
@@ -446,7 +460,9 @@ function App() {
         isStreaming={isStreaming}
         user={user}
         onLogout={handleLogout}
+        onStartTour={() => setIsTourOpen(true)}
       />
+      {isTourOpen && <GuidedTour onClose={handleCloseTour} />}
       <div className="relative flex min-w-0 flex-1 flex-col">
         <ChatViewport
           messages={messages}

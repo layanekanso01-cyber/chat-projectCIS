@@ -60,7 +60,7 @@ export function ChatInput({
 
   return (
     <div className="px-4 pt-2 pb-6">
-      <div className="mx-auto mb-1.5 flex w-full max-w-[800px] items-center gap-1.5">
+      <div className="mx-auto mb-1.5 flex w-full max-w-[800px] items-center gap-1.5" data-tour="mode-toggle">
         {Object.entries(MODE_CONFIG).map(([key, config]) => {
           const Icon = config.icon;
           return (
@@ -86,6 +86,7 @@ export function ChatInput({
       )}
       <form
         onSubmit={handleSubmit}
+        data-tour="chat-input"
         className="mx-auto flex w-full max-w-[800px] items-end gap-2 rounded-3xl border border-border bg-background p-2 shadow-sm"
       >
         <Textarea

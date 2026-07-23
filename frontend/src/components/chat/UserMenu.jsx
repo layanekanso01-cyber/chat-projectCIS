@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { LogOut, ScrollText } from "lucide-react";
+import { LogOut, ScrollText, Compass } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -37,7 +37,7 @@ function AccountAvatar({ user, className }) {
   );
 }
 
-export function UserMenu({ user, onLogout, isCollapsed }) {
+export function UserMenu({ user, onLogout, isCollapsed, onStartTour }) {
   const [isAuditLogOpen, setIsAuditLogOpen] = useState(false);
 
   if (!user) return null;
@@ -52,6 +52,7 @@ export function UserMenu({ user, onLogout, isCollapsed }) {
               size="icon-sm"
               aria-label="Account menu"
               className="shrink-0 rounded-full"
+              data-tour="account-menu"
             />
           }
         >
@@ -66,6 +67,12 @@ export function UserMenu({ user, onLogout, isCollapsed }) {
             <DropdownMenuItem onClick={() => setIsAuditLogOpen(true)}>
               <ScrollText className="size-3.5" />
               Audit log
+            </DropdownMenuItem>
+          )}
+          {onStartTour && (
+            <DropdownMenuItem onClick={onStartTour}>
+              <Compass className="size-3.5" />
+              Take a tour
             </DropdownMenuItem>
           )}
           <DropdownMenuItem variant="destructive" onClick={onLogout}>

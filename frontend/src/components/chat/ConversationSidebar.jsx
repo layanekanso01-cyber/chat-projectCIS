@@ -198,6 +198,7 @@ export function ConversationSidebar({
   isStreaming,
   user,
   onLogout,
+  onStartTour,
 }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -247,6 +248,7 @@ export function ConversationSidebar({
             onClick={onNewChat}
             variant="ghost"
             className="flex-1 justify-start gap-2 font-normal whitespace-nowrap"
+            data-tour="new-chat"
           >
             <SquarePen className="size-4 shrink-0" />
             New chat
@@ -332,7 +334,7 @@ export function ConversationSidebar({
           isCollapsed ? "flex-col" : "justify-between"
         }`}
       >
-        <UserMenu user={user} onLogout={onLogout} isCollapsed={isCollapsed} />
+        <UserMenu user={user} onLogout={onLogout} isCollapsed={isCollapsed} onStartTour={onStartTour} />
         <div className={`flex items-center gap-1 ${isCollapsed ? "flex-col" : ""}`}>
           <ProviderToggle provider={provider} onChange={onProviderChange} disabled={isStreaming} />
           <ThemeToggle />

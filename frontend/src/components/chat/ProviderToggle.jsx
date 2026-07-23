@@ -24,6 +24,7 @@ export function ProviderToggle({ provider, onChange, disabled = false }) {
             size="icon-sm"
             disabled={disabled}
             aria-label={`Model: ${PROVIDER_LABELS[provider]}`}
+            data-tour="provider-toggle"
           />
         }
       >
