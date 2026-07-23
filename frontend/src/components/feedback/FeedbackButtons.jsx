@@ -25,7 +25,7 @@ export function FeedbackButtons({ feedback, onFeedback }) {
         aria-label="Good response"
         aria-pressed={feedback === "up"}
         onClick={handleThumbsUp}
-        className={feedback === "up" ? "text-blue-600" : "text-gray-400"}
+        className={feedback === "up" ? "text-primary" : "text-muted-foreground"}
       >
         <ThumbsUp className="size-3.5" />
       </Button>
@@ -36,7 +36,7 @@ export function FeedbackButtons({ feedback, onFeedback }) {
         aria-label="Bad response"
         aria-pressed={feedback === "down"}
         onClick={() => setIsDialogOpen(true)}
-        className={feedback === "down" ? "text-blue-600" : "text-gray-400"}
+        className={feedback === "down" ? "text-primary" : "text-muted-foreground"}
       >
         <ThumbsDown className="size-3.5" />
       </Button>
