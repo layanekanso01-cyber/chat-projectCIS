@@ -95,10 +95,23 @@ public class AuthController : ControllerBase
             };
             await _users.CreateAsync(user, cancellationToken);
         }
-        else if (isAdminEmail && user.Role != "Admin")
+        else
         {
-            await _users.UpdateRoleAsync(user.Id, "Admin", cancellationToken);
-            user.Role = "Admin";
+            if (isAdminEmail && user.Role != "Admin")
+            {
+                await _users.UpdateRoleAsync(user.Id, "Admin", cancellationToken);
+                user.Role = "Admin";
+            }
+
+            // Google's display name/picture can change after the account was first
+            // created here — sync them on every login rather than freezing whatever was
+            // captured at signup.
+            if (user.DisplayName != name || user.AvatarUrl != avatarUrl)
+            {
+                await _users.UpdateProfileAsync(user.Id, name, avatarUrl, cancellationToken);
+                user.DisplayName = name;
+                user.AvatarUrl = avatarUrl;
+            }
         }
 
         var tokens = await _tokenService.IssueTokenPairAsync(user, cancellationToken);
@@ -153,6 +166,7 @@ public class AuthController : ControllerBase
             id = User.FindFirstValue(JwtRegisteredClaimNames.Sub),
             email = User.FindFirstValue(JwtRegisteredClaimNames.Email),
             name = User.FindFirstValue("name"),
+            avatarUrl = User.FindFirstValue("avatar"),
             role = User.FindFirstValue(ClaimTypes.Role),
         });
     }

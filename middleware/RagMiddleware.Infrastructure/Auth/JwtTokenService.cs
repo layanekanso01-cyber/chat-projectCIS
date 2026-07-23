@@ -35,6 +35,10 @@ public class JwtTokenService : IJwtTokenService
         {
             claims.Add(new Claim("name", user.DisplayName));
         }
+        if (user.AvatarUrl is not null)
+        {
+            claims.Add(new Claim("avatar", user.AvatarUrl));
+        }
 
         var token = new JwtSecurityToken(
             issuer: _options.Issuer,

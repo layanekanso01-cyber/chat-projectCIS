@@ -27,4 +27,12 @@ public class UserRepository : IUserRepository
             u => u.Id == id,
             Builders<User>.Update.Set(u => u.Role, role),
             cancellationToken: cancellationToken);
+
+    public Task UpdateProfileAsync(string id, string? displayName, string? avatarUrl, CancellationToken cancellationToken) =>
+        _users.UpdateOneAsync(
+            u => u.Id == id,
+            Builders<User>.Update
+                .Set(u => u.DisplayName, displayName)
+                .Set(u => u.AvatarUrl, avatarUrl),
+            cancellationToken: cancellationToken);
 }

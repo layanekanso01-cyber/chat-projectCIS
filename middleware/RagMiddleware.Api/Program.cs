@@ -112,6 +112,10 @@ builder.Services.AddAuthentication(options =>
     // Must match exactly what's registered in Google Cloud Console for this app.
     options.CallbackPath = "/api/auth/google/callback";
     options.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+    // Not one of GoogleOptions' built-in default claim mappings (sub/name/email are, this
+    // isn't) — map it explicitly from the userinfo endpoint's "picture" JSON key so
+    // GoogleComplete's principal.FindFirstValue("urn:google:picture") actually finds it.
+    options.ClaimActions.MapJsonKey("urn:google:picture", "picture");
 })
 .AddJwtBearer(options =>
 {

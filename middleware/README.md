@@ -32,6 +32,42 @@ frontend (5173)  →  RagMiddleware.Api (5292)  →  Python RAG API (8000)
 - A Google OAuth 2.0 Client ID (Web application type), with an authorized redirect URI of
   `http://localhost:5292/api/auth/google/callback` for local dev
 
+## Credentials this app handles
+
+| Name | Purpose | Where it lives |
+|---|---|---|
+| `RagApi:ApiKey` (shared middleware key) | Proves to the Python API that a request came from this middleware, not a random client. Attached to every outgoing proxy request as `X-Middleware-Key`, stripped from every response. | .NET user-secrets locally; `MIDDLEWARE_SHARED_KEY` in `backend/.env` on the Python side — both must hold the same value. |
+| `Authentication:Google:ClientId` / `ClientSecret` | Identifies this app to Google for the OAuth handshake. | .NET user-secrets locally. |
+| `Jwt:SigningKey` | Signs and validates every access token this app issues. Anyone with this value could forge a valid session. | .NET user-secrets locally. |
+| Refresh tokens (per user) | Long-lived credential the UI exchanges for a new access token. | MongoDB, `refresh_tokens` collection — **only the SHA-256 hash is stored**, the raw value is returned to the client once at issuance and never persisted. |
+| `MongoDb:ConnectionString` | Access to the database backing all of the above. | .NET user-secrets locally. |
+
+None of these are ever hardcoded in source or committed to `appsettings.json` — see
+Configuration below.
+
+## Secret storage: local dev vs. a real deployment
+
+Local dev uses **.NET user-secrets** (stored outside the repo, under the user's profile) —
+adequate for a single developer's machine, not for a shared or production environment.
+For an actual deployment, every value in the table above should move to a real secrets
+manager instead — e.g. **Azure Key Vault** referenced via
+`Microsoft.Extensions.Configuration.AzureKeyVault`, or environment variables injected by
+whatever's actually running the container (App Service, Kubernetes secrets, etc.). This
+app already reads all of them through `IOptions<T>` (`RagApiOptions`, `JwtOptions`,
+`MongoDbOptions`), so swapping the configuration *source* for production is a deployment
+concern, not a code change — no `Configuration["Key"]` string lookup is scattered through
+the codebase to go find and update.
+
+## Data retention
+
+Audit logs currently have no automatic expiry — every row written by
+`AuditLoggingMiddleware` is kept indefinitely. That's a deliberate "decide later, once
+real usage volume is known" choice rather than an oversight: for a small intern-scale
+deployment, unbounded audit history is more useful than guessing at a retention window
+prematurely. If/when this matters, the cheapest fix is a MongoDB TTL index on
+`AuditLog.Timestamp` (e.g. `db.audit_logs.createIndex({ Timestamp: 1 }, { expireAfterSeconds: <N> })`)
+rather than an application-level cleanup job.
+
 ## Configuration
 
 `appsettings.json` holds structural placeholders only — every actual value is local-only
@@ -81,6 +117,25 @@ Runs on `http://localhost:5292`. Interactive docs (dev only) at `/scalar/v1`.
    `Authorization: Bearer`. The refresh token (14 days default) is single-use — every
    `POST /api/auth/refresh` call rotates it, storing only a SHA-256 hash in Mongo.
 
+### Testing the OAuth flow locally
+
+1. Start `RagMiddleware.Api` (`dotnet run --launch-profile http`) and the frontend
+   (`npm run dev`).
+2. Open `http://localhost:5173` — you should land on the "Sign in with Google" screen.
+3. Click it. You're redirected to Google — or signed in silently with no prompt at all if
+   your browser already has an active Google session and you'd previously granted consent.
+   Both are the real OAuth flow completing; the silent case is Google's normal seamless-SSO
+   behavior, not a shortcut this app is taking.
+4. Google redirects back to `/api/auth/google/callback` (handled entirely by the
+   framework), which hands off to `/api/auth/google/complete`, which redirects the browser
+   to `http://localhost:5173/auth/callback?access_token=...&refresh_token=...`.
+5. The frontend picks up those tokens, stores them, strips them from the URL, and you land
+   in the chat UI signed in.
+6. To confirm the round trip actually did something (not just "a screen changed"): check
+   the `users` collection in the `rag_middleware` Mongo database for a document matching
+   your Google account's email, or — if your account has the `Admin` role — open the audit
+   log from the account menu and look for a fresh `LOGIN_SUCCESS` row.
+
 ## Endpoints
 
 | Route | Auth | Notes |
@@ -89,10 +144,29 @@ Runs on `http://localhost:5292`. Interactive docs (dev only) at `/scalar/v1`.
 | `GET /api/auth/login/google` | none | redirects to Google |
 | `GET /api/auth/google/complete` | cookie (internal) | never call directly |
 | `POST /api/auth/refresh` | none (token in body) | rotates the refresh token |
-| `GET /api/auth/me` | JWT | |
+| `GET /api/auth/me` | JWT | returns `id`, `email`, `name`, `avatarUrl`, `role` |
 | `POST /api/auth/logout` | JWT | revokes the given refresh token |
 | `GET\|POST\|PATCH\|DELETE /api/rag/{**path}` | JWT | reverse proxy to the Python API |
-| `GET /api/admin/audit-logs?limit=` | JWT, `Admin` role | |
+| `GET /api/admin/audit-logs` | JWT, `Admin` role | query params: `limit`, `offset`, `userEmail`, `path` (substring, case-insensitive), `action` (exact match, see below), `from`, `to` (dates, UTC) |
+
+Each audit log row also carries an `action` label (`AuditLoggingMiddleware.ClassifyAction`)
+— a coarse category like `LOGIN_SUCCESS`, `LOGIN_FAILED`, `RAG_QUERY`,
+`RAG_COMPLIANCE_CHECK`, `RAG_PROXY`, `TOKEN_REFRESH_SUCCESS` — derived from the request's
+path/method/status so the log is filterable by "what kind of thing happened," not just
+raw method+path. Deliberately **not** included: a free-text summary of the request body.
+Chat questions and compliance-check descriptions can contain sensitive business content,
+and the doc's own guidance is "no secrets/PII beyond what's needed" — logging `action` +
+`path` + status already answers "who did what, when, with what outcome" without risking
+that kind of content ending up sitting in a database indefinitely.
+
+## Code review checklist
+
+- [ ] No RAG API credential, Google client secret, JWT signing key, or raw refresh token
+      is ever serialized into a response body, header, log line, or audit log entry —
+      check by hand on any change that touches `RagApiClient`, `JwtTokenService`, or
+      `AuditLoggingMiddleware`.
+- [ ] Any new endpoint that returns user or configuration data is checked for the same
+      before merging.
 
 ## Hardening notes
 

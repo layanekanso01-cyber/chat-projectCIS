@@ -47,6 +47,7 @@ public class AuditLoggingMiddleware
                 Id = Guid.NewGuid().ToString(),
                 UserId = context.User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value,
                 UserEmail = context.User.FindFirst(JwtRegisteredClaimNames.Email)?.Value,
+                Action = ClassifyAction(context),
                 Method = context.Request.Method,
                 Path = context.Request.Path.Value ?? "",
                 QueryString = context.Request.QueryString.HasValue ? context.Request.QueryString.Value : null,
@@ -69,5 +70,49 @@ public class AuditLoggingMiddleware
                 // describing — the request has already been fully handled above.
             }
         }
+    }
+
+    // A coarse, human-readable label (doc's example: "RAG_QUERY", "LOGIN_SUCCESS",
+    // "LOGIN_FAILED") on top of the raw Method+Path, so the audit log can be filtered by
+    // "what kind of thing happened" without knowing the exact route shape.
+    private static string ClassifyAction(HttpContext context)
+    {
+        var path = context.Request.Path.Value ?? "";
+        var status = context.Response.StatusCode;
+
+        if (path.StartsWith("/api/auth/google/complete", StringComparison.OrdinalIgnoreCase))
+        {
+            return status is >= 200 and < 400 ? "LOGIN_SUCCESS" : "LOGIN_FAILED";
+        }
+        if (path.StartsWith("/api/auth/login/google", StringComparison.OrdinalIgnoreCase))
+        {
+            return "LOGIN_INITIATED";
+        }
+        if (path.StartsWith("/api/auth/refresh", StringComparison.OrdinalIgnoreCase))
+        {
+            return status == 200 ? "TOKEN_REFRESH_SUCCESS" : "TOKEN_REFRESH_FAILED";
+        }
+        if (path.StartsWith("/api/auth/logout", StringComparison.OrdinalIgnoreCase))
+        {
+            return "LOGOUT";
+        }
+        if (path.StartsWith("/api/admin/audit-logs", StringComparison.OrdinalIgnoreCase))
+        {
+            return "ADMIN_AUDIT_VIEW";
+        }
+        if (path.StartsWith("/api/rag/chat", StringComparison.OrdinalIgnoreCase))
+        {
+            return "RAG_QUERY";
+        }
+        if (path.StartsWith("/api/rag/compliance-check", StringComparison.OrdinalIgnoreCase))
+        {
+            return "RAG_COMPLIANCE_CHECK";
+        }
+        if (path.StartsWith("/api/rag/", StringComparison.OrdinalIgnoreCase))
+        {
+            return "RAG_PROXY";
+        }
+
+        return $"{context.Request.Method}_OTHER";
     }
 }

@@ -11,6 +11,7 @@ public class AuditLog
 
     public string? UserId { get; set; }
     public string? UserEmail { get; set; }
+    public required string Action { get; set; }
     public required string Method { get; set; }
     public required string Path { get; set; }
     public string? QueryString { get; set; }
