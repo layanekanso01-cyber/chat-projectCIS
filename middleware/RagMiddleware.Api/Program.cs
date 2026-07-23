@@ -1,8 +1,10 @@
 using System.Text;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Polly;
@@ -31,8 +33,8 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy(FrontendCorsPolicy, policy =>
         policy.WithOrigins("http://localhost:5173", "http://localhost:5174")
-              .AllowAnyHeader()
-              .AllowAnyMethod());
+              .WithHeaders("Authorization", "Content-Type")
+              .WithMethods("GET", "POST", "PATCH", "DELETE"));
 });
 
 // Strongly-typed, validated config for the one credential this app holds on the RAG API's
@@ -133,6 +135,41 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization();
 
+// Partitioned by IP rather than by user: this runs ahead of authentication (see the
+// pipeline ordering note below), so an authenticated identity isn't available yet — IP is
+// the only signal we reliably have at this point, and it's what actually matters for
+// pre-auth abuse (credential/token guessing, hammering the login redirect).
+static string ClientIpKey(HttpContext context) =>
+    context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    // Login/refresh/logout: tight, since these are the endpoints worth protecting against
+    // brute-force (refresh token guessing) or redirect-hammering.
+    options.AddPolicy("auth", context => RateLimitPartition.GetFixedWindowLimiter(
+        ClientIpKey(context),
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 10,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+        }));
+
+    // The RAG proxy: generous enough that a normal chat/compliance-check session never
+    // notices it, but caps runaway/scripted use. A long SSE stream only ever consumes one
+    // permit for the whole request, regardless of how long it stays open.
+    options.AddPolicy("api", context => RateLimitPartition.GetFixedWindowLimiter(
+        ClientIpKey(context),
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 120,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+        }));
+});
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -141,15 +178,24 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
     app.MapScalarApiReference();
 }
+else
+{
+    // Not relevant to local dev (plain http://localhost), but a required baseline for
+    // any real deployment: tells browsers to only ever talk to this host over HTTPS,
+    // closing the window for a downgrade/strip attack on the first request.
+    app.UseHsts();
+}
 
 app.UseHttpsRedirection();
 
 app.UseCors(FrontendCorsPolicy);
 
-// Must wrap (precede) auth, not follow it: UseAuthorization short-circuits the pipeline
-// on a failed check and never calls _next, so a logging middleware placed after it would
-// silently never run for the 401s that are often the most worth auditing.
+// Must wrap (precede) auth AND rate limiting, not follow them: both of those short-circuit
+// the pipeline on rejection, so a logging middleware placed after either would silently
+// never see the 401s/429s that are often the most worth auditing.
 app.UseMiddleware<AuditLoggingMiddleware>();
+
+app.UseRateLimiter();
 
 app.UseAuthentication();
 app.UseAuthorization();

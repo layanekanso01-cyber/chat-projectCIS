@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using RagMiddleware.Domain;
 using RagMiddleware.Infrastructure.Auth;
 using RagMiddleware.Infrastructure.Users;
@@ -21,6 +22,7 @@ public record RefreshRequest(string RefreshToken);
 /// cookie-based identity gets turned into a Mongo user record and our own JWT.
 /// </summary>
 [ApiController]
+[EnableRateLimiting("auth")]
 [Route("api/auth")]
 public class AuthController : ControllerBase
 {
@@ -112,6 +114,11 @@ public class AuthController : ControllerBase
     [HttpPost("refresh")]
     public async Task<IActionResult> Refresh([FromBody] RefreshRequest request, CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(request.RefreshToken))
+        {
+            return BadRequest(new { detail = "refreshToken is required." });
+        }
+
         var tokenHash = _tokenService.HashRefreshToken(request.RefreshToken);
         var stored = await _refreshTokens.FindValidByHashAsync(tokenHash, cancellationToken);
         if (stored is null)
@@ -154,6 +161,11 @@ public class AuthController : ControllerBase
     [HttpPost("logout")]
     public async Task<IActionResult> Logout([FromBody] RefreshRequest request, CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(request.RefreshToken))
+        {
+            return NoContent();
+        }
+
         var tokenHash = _tokenService.HashRefreshToken(request.RefreshToken);
         var stored = await _refreshTokens.FindValidByHashAsync(tokenHash, cancellationToken);
         if (stored is not null)

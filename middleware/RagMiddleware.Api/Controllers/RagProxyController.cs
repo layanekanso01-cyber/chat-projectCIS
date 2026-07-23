@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using RagMiddleware.Infrastructure.RagApi;
 
 namespace RagMiddleware.Api.Controllers;
@@ -13,6 +14,7 @@ namespace RagMiddleware.Api.Controllers;
 /// </summary>
 [ApiController]
 [Authorize]
+[EnableRateLimiting("api")]
 [Route("api/rag")]
 public class RagProxyController : ControllerBase
 {
