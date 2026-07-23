@@ -5,6 +5,7 @@ import { SourceCitations } from "@/components/citations/SourceCitations";
 import { MessageActions } from "./MessageActions";
 import { FollowUpSuggestions } from "./FollowUpSuggestions";
 import { ComplianceChecklist } from "./ComplianceChecklist";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 
 // Turns literal "[1]", "[2]", ... in the model's answer into markdown links pointing
 // at a fake "#cite-N" href, which the custom `a` renderer below turns into a clickable
@@ -12,6 +13,14 @@ import { ComplianceChecklist } from "./ComplianceChecklist";
 // already a real markdown link target, e.g. "[text](url)".
 function linkifyCitations(text) {
   return text.replace(/\[(\d{1,2})\](?!\()/g, "[$1](#cite-$1)");
+}
+
+const CITATION_BADGE_CLASS =
+  "mx-0.5 inline-flex h-4 min-w-4 -translate-y-0.5 items-center justify-center rounded-full border border-primary/30 bg-primary/10 px-1 align-super text-[10px] font-medium text-primary outline-none transition-colors hover:bg-primary/20 disabled:opacity-40";
+
+function truncateSnippet(text, maxLength = 160) {
+  if (!text) return null;
+  return text.length > maxLength ? `${text.slice(0, maxLength).trimEnd()}…` : text;
 }
 
 function CitationLink({ href, children, sources, onCiteClick }) {
@@ -30,20 +39,43 @@ function CitationLink({ href, children, sources, onCiteClick }) {
   }
 
   const index = Number(match[1]);
-  const isValid = Boolean(sources) && index >= 1 && index <= sources.length;
+  const source = Boolean(sources) && index >= 1 && index <= sources.length ? sources[index - 1] : null;
+
+  function handleClick(event) {
+    event.preventDefault();
+    if (source) onCiteClick(index);
+  }
+
+  if (!source) {
+    return (
+      <button type="button" disabled aria-label={`Jump to source ${index}`} className={CITATION_BADGE_CLASS}>
+        {index}
+      </button>
+    );
+  }
+
+  // Hovering previews the snippet inline; clicking still jumps to the full source
+  // card below (scrolled into view + expanded) for the passage, control label, etc.
   return (
-    <button
-      type="button"
-      disabled={!isValid}
-      onClick={(event) => {
-        event.preventDefault();
-        if (isValid) onCiteClick(index);
-      }}
-      aria-label={`Jump to source ${index}`}
-      className="mx-0.5 inline-flex h-4 min-w-4 -translate-y-0.5 items-center justify-center rounded-full border border-primary/30 bg-primary/10 px-1 align-super text-[10px] font-medium text-primary outline-none transition-colors hover:bg-primary/20 disabled:opacity-40"
-    >
-      {index}
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            onClick={handleClick}
+            aria-label={`Jump to source ${index}`}
+            className={CITATION_BADGE_CLASS}
+          />
+        }
+      >
+        {index}
+      </TooltipTrigger>
+      <TooltipContent>
+        <p className="text-xs">
+          {truncateSnippet(source.quote) || source.source || "View source"}
+        </p>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
