@@ -68,7 +68,10 @@ chat-project/
 
 ## Running locally
 
-Three processes, in order:
+Three processes, in order. Once the prerequisites above are already running (Weaviate
+populated, Ollama serving, MongoDB up, a Google OAuth client configured), starting all
+three from a fresh clone takes under 5 minutes — the time below is infra provisioning,
+not this repo.
 
 **1. Python RAG API**
 ```bash
@@ -129,8 +132,10 @@ npm test
   control names to fill the gap.
 
 See `middleware/README.md` for the equivalent notes on the auth/proxy layer (secret
-handling, rate limiting, audit logging), and `CLAUDE.md` for the full contributor-facing
-reference (conventions, further architectural detail, current roadmap).
+handling, rate limiting, audit logging), `CLAUDE.md` for the full contributor-facing
+reference (conventions, further architectural detail, current roadmap), and
+`AI_USAGE.md` for how Claude Code was used to build this project and what it actually
+found and fixed.
 
 ## Status
 
