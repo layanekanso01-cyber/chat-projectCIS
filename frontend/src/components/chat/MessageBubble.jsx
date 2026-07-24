@@ -10,9 +10,17 @@ import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip
 // Turns literal "[1]", "[2]", ... in the model's answer into markdown links pointing
 // at a fake "#cite-N" href, which the custom `a` renderer below turns into a clickable
 // citation badge instead of a real navigating link. `(?!\()` skips anything that's
-// already a real markdown link target, e.g. "[text](url)".
+// already a real markdown link target, e.g. "[text](url)". Also handles the model
+// occasionally combining multiple citations into one bracket ("[1, 2]") instead of
+// separate ones ("[1][2]") — each number becomes its own badge either way, so a
+// combined bracket never falls through as dead, unclickable text.
 function linkifyCitations(text) {
-  return text.replace(/\[(\d{1,2})\](?!\()/g, "[$1](#cite-$1)");
+  return text.replace(/\[(\d{1,2}(?:\s*,\s*\d{1,2})*)\](?!\()/g, (_, nums) =>
+    nums
+      .split(",")
+      .map((n) => `[${n.trim()}](#cite-${n.trim()})`)
+      .join(""),
+  );
 }
 
 const CITATION_BADGE_CLASS =
