@@ -31,7 +31,7 @@ class TestQuotedPassageExtraction:
         assert "  " not in result
 
     def test_truncates_long_text(self):
-        text = "word " * 100
+        text = "word " * 300
         result = pipeline._extract_quoted_passage(text)
         assert len(result) <= pipeline._QUOTED_PASSAGE_MAX_CHARS + 4
         assert result.endswith("...")

@@ -130,7 +130,12 @@ OUT_OF_SCOPE_MESSAGE = (
 # textual patterns are reliable enough to show as a best-effort label.
 _SOURCE_CONTROL_LABEL_PATTERN = re.compile(r"\bControl\s+0?(\d{1,2})\b", re.IGNORECASE)
 _SOURCE_SAFEGUARD_LABEL_PATTERN = re.compile(r"\b(\d{1,2})\.(\d{1,2})\s+[A-Z]")
-_QUOTED_PASSAGE_MAX_CHARS = 220
+# Real ingested chunks run 109-998 chars (median 881, checked directly against the
+# collection) — 220 was truncating most chunks to roughly a quarter of their real
+# length. 1200 comfortably covers the observed max with headroom, so in practice this
+# now shows the full chunk for virtually every source, while still capping defensively
+# against an unusually long one.
+_QUOTED_PASSAGE_MAX_CHARS = 1200
 
 
 def _extract_control_label(text: str) -> str | None:
